@@ -107,12 +107,10 @@ for model_name in model_names:
         ).numpy()[:, 0]
 
 
-    full_input_logit = df[df["key"] == "[]"]["pred"].values[0]
-    df["pred_diff"] = full_input_logit - df["pred"]
+    
 
-    if CLAMP_NEGATIVE_VALUES:
-        df["pred_diff"] = df["pred_diff"].clip(0)
 
+    
 
     for element_id in df["id"].unique():
         df_id = df[df["id"] == element_id]
@@ -121,12 +119,17 @@ for model_name in model_names:
 
         d = Dict()
         min_max_lookup = Dict()
+        no_mask_value = df_id[df_id["key"] == "[]"]["pred"].values[0]
+        df_id["pred_diff"] = no_mask_value - df["pred"]
+
+        if CLAMP_NEGATIVE_VALUES:
+            df_id["pred_diff"] = df_id["pred_diff"].clip(0)
 
         for index, row in df_id.iterrows():
             key = row["key"][1:-1].replace(" ", "")
             if len(key) > 0:
-                key += ","
-
+                key += "," 
+            
             d[key] = row["pred_diff"]
 
         min_max_lookup["min"] = 100.1
@@ -146,15 +149,17 @@ for model_name in model_names:
         min_value = min_max_lookup["min"]
         max_value = min_max_lookup["max"]
 
-        no_mask_value = d[""]
         all_mask_value = d[get_key(vector)]
 
+
         comprehensiveness = (
-            (max_value + no_mask_value + all_mask_value) / number_of_elements
-        ) / full_input_logit
+            (max_value  + all_mask_value) / number_of_elements
+        ) / no_mask_value
+
+
         sufficiency = (
-            (min_value + no_mask_value + all_mask_value) / number_of_elements
-        ) / full_input_logit
+            (min_value + all_mask_value) / number_of_elements
+        ) / no_mask_value
 
         print("Best possible comprensiveness score: ", comprehensiveness)
         print("Best possible comprehensiveness order: ", max_order)
