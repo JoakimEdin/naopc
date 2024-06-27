@@ -13,7 +13,7 @@ from dataset import PerturbDataset
 BATCH_SIZE = 1024
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-yelp = datasets.load_dataset("yelp_polarity", split="test")
+yelp = datasets.load_dataset("csv", data_files="yelp_polarity_test_small.csv", split="train")
 
 model_names = [
     "JiaqiLee/robust-bert-yelp",
@@ -35,15 +35,6 @@ yelp = yelp.map(
     },
     batched=True,
 )
-yelp = yelp.map(
-    lambda x: {
-        "length": max([len(x[f"input_ids_{model_name}"]) for model_name in model_names])
-    }
-)
-
-yelp = yelp.filter(lambda x: (x["length"] <= 12) and (x["label"] == 1))
-yelp = yelp.sort("length", reverse=True)
-
 number_of_forward_passes = sum(yelp.map(lambda x: {"2^n": math.pow(2, x["length"]-2)})["2^n"]) // BATCH_SIZE + 1
 
 for model_name in model_names:
