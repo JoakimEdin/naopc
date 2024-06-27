@@ -1,19 +1,29 @@
-import os
 import math
+import os
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 
 import datasets
-import torch
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import pandas as pd
-from rich.progress import track
+import torch
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-from dataset import PerturbDataset
+from feature_attribution_methods import (
+    get_attention_callable,
+    get_attingrad_callable,
+    get_deeplift_callable,
+    get_gradient_x_input_callable,
+    get_integrated_gradient_callable,
+    get_kernelshap_callable,
+    get_lime_callable,
+    get_occlusion_1_callable,
+    get_random_baseline_callable,
+)
 
 BATCH_SIZE = 1024
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-yelp = datasets.load_dataset("yelp_polarity", split="test")
+yelp = datasets.load_dataset("csv", data_files="yelp_polarity_test_small.csv", split="train")
 
 model_names = [
     "JiaqiLee/robust-bert-yelp",
@@ -22,6 +32,19 @@ model_names = [
     "textattack/bert-base-uncased-imdb",
     "textattack/roberta-base-imdb",
 ]
+
+explanation_methods = {
+    "attingrad": get_attingrad_callable,
+    "attention": get_attention_callable,
+    "gradient_x_input": get_gradient_x_input_callable,
+    "deeplift": get_deeplift_callable,
+    "integrated_gradient": get_integrated_gradient_callable,
+    "lime": get_lime_callable,
+    "kernelshap": get_kernelshap_callable,
+    "occlusion_1": get_occlusion_1_callable,
+    "random_baseline": get_random_baseline_callable,
+}
+
 
 tokenizers = {}
 
@@ -35,39 +58,57 @@ yelp = yelp.map(
     },
     batched=True,
 )
-yelp = yelp.map(
-    lambda x: {
-        "length": max([len(x[f"input_ids_{model_name}"]) for model_name in model_names])
-    }
-)
 
-yelp = yelp.filter(lambda x: (x["length"] <= 12) and (x["label"] == 1))
-yelp = yelp.sort("length", reverse=True)
-
-number_of_forward_passes = sum(yelp.map(lambda x: {"2^n": math.pow(2, x["length"]-2)})["2^n"]) // BATCH_SIZE + 1
 
 for model_name in model_names:
+    mask_token_id = tokenizers[model_name].mask_token_id
+    pad_token_id = tokenizers[model_name].pad_token_id
+    start_token_id = tokenizers[model_name].cls_token_id
+    end_token_id = tokenizers[model_name].sep_token_id
 
-    dataset = PerturbDataset(yelp, tokenizers[model_name].mask_token_id, tokenizers[model_name].pad_token_id, f"input_ids_{model_name}")
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE, num_workers=0, collate_fn=dataset.collate_fn)
-    
-    model = AutoModelForSequenceClassification.from_pretrained(model_name, cache_dir="cache")
+    input_id_column_name = f"input_ids_{model_name}"
+    model = AutoModelForSequenceClassification.from_pretrained(
+        model_name, cache_dir="cache"
+    )
     model.to(device)
     model.eval()
+    target_label = torch.tensor([1]).to(device)
 
-    positive_logit_list = []
-    negative_logit_list = []
+    feature_attribution_list = []
     id_list = []
-    key_list = []
+    explanation_names = []
 
-    
-    with torch.no_grad():
-        for ids, key, input_ids_batch, attention_mask in track(dataloader, total=number_of_forward_passes, description=model_name):
-            logits = model(input_ids_batch.to(device), attention_mask=attention_mask.to(device)).logits.cpu()
-            positive_logit_list.extend(logits[:, 1].tolist())
-            negative_logit_list.extend(logits[:, 0].tolist())
-            id_list.extend(ids)
-            key_list.extend(key)
+    for explanation_name, explanation_method in explanation_methods.items():
+        explanation_method_callable = explanation_method(
+            model,
+            baseline_token_id=mask_token_id,
+            cls_token_id=start_token_id,
+            eos_token_id=end_token_id,
+        )
 
-    df = pd.DataFrame({"id": id_list, "key": key_list, "positive_logit": positive_logit_list, "negative_logit": negative_logit_list})
-    df.to_parquet(f"results/yelp_polarity_permutations_{model_name.split('/')[1]}.parquet")
+        for example in yelp:
+            input_ids = (
+                torch.tensor(example[input_id_column_name]).to(device).unsqueeze(0)
+            )
+            attributions = (
+                explanation_method_callable(
+                    input_ids=input_ids, target_ids=target_label, device=device
+                )
+                .squeeze()
+                .cpu()
+                .numpy()
+            )
+            feature_attribution_list.append(attributions)
+            id_list.append(example["id"])
+            explanation_names.append(explanation_name)
+
+    df = pd.DataFrame(
+        {
+            "id": id_list,
+            "feature_attributions": feature_attribution_list,
+            "explanation_method": explanation_names,
+        }
+    )
+    df.to_parquet(
+        f"results/yelp_polarity_feature_attributions_{model_name.split('/')[1]}.parquet"
+    )
