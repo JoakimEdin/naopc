@@ -26,7 +26,7 @@ model_names = [
 tokenizers = {}
 
 for model_name in model_names:
-    tokenizers[model_name] = AutoTokenizer.from_pretrained(model_name)
+    tokenizers[model_name] = AutoTokenizer.from_pretrained(model_name, cache_dir="cache")
 
 yelp = yelp.map(
     lambda x: {
@@ -127,11 +127,10 @@ for model_name in model_names:
                         0,
                     )
 
-                comprehensiveness /= len(token_ranking) * full_output
-
+                comprehensiveness /= (len(token_ranking) * full_output)
                 normalized_comprehensiveness = (
                     comprehensiveness - lower_bound_comprehensiveness
-                ) / (upper_bound_comprehensiveness - lower_bound_comprehensiveness)
+                ) / (upper_bound_comprehensiveness - lower_bound_comprehensiveness + 1e-10)
 
                 # calculate sufficiency
                 sufficiency = 0
@@ -148,16 +147,13 @@ for model_name in model_names:
                         0,
                     )
 
-                sufficiency /= len(token_ranking) * full_output
-
+                sufficiency /= (len(token_ranking) * full_output)
                 normalized_sufficiency = (sufficiency - lower_bound_sufficiency) / (
-                    upper_bound_sufficiency - lower_bound_sufficiency
+                    upper_bound_sufficiency - lower_bound_sufficiency + 1e-10
                 )
 
-                print(sufficiency)
-                print(normalized_sufficiency)
-                print(comprehensiveness)
-                print(normalized_comprehensiveness)
+
+
                 explanation_names.append(explanation_method)
                 comprehensiveness_before_normalization.append(comprehensiveness)
                 comprehensiveness_after_normalization.append(
