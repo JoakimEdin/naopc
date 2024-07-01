@@ -26,7 +26,9 @@ model_names = [
 tokenizers = {}
 
 for model_name in model_names:
-    tokenizers[model_name] = AutoTokenizer.from_pretrained(model_name, cache_dir="cache")
+    tokenizers[model_name] = AutoTokenizer.from_pretrained(
+        model_name, cache_dir="cache"
+    )
 
 yelp = yelp.map(
     lambda x: {
@@ -62,6 +64,8 @@ for model_name in model_names:
     comprehensiveness_after_normalization = []
     explanation_names = []
     id_list = []
+    prob_list = []
+    masked_input_list = []
 
     with torch.no_grad():
         for explanation_method in explanation_methods:
@@ -99,6 +103,11 @@ for model_name in model_names:
                 full_output = (
                     model(input_ids).logits.softmax(1).squeeze(0).cpu()[1].item()
                 )
+                masked_input_output = (
+                    lower_upper_bound_comprehensiveness_and_sufficiency_id[
+                        "masked_input"
+                    ].values[0]
+                )
 
                 attributions = feature_attributions_df[
                     (feature_attributions_df["id"] == example["id"])
@@ -117,42 +126,44 @@ for model_name in model_names:
                 comprehensiveness = 0
                 for token in token_ranking:
                     permutation_input_ids[:, token] = mask_token_id
-                    comprehensiveness += max(
+                    comprehensiveness += (
                         full_output
                         - model(permutation_input_ids)
                         .logits.softmax(1)
                         .squeeze(0)
                         .cpu()[1]
-                        .item(),
-                        0,
+                        .item()
                     )
 
-                comprehensiveness /= (len(token_ranking) * full_output)
-                normalized_comprehensiveness = (
-                    comprehensiveness - lower_bound_comprehensiveness
-                ) / (upper_bound_comprehensiveness - lower_bound_comprehensiveness + 1e-10)
+                comprehensiveness /= len(token_ranking)
+                if (upper_bound_comprehensiveness - lower_bound_comprehensiveness) != 0:
+                    normalized_comprehensiveness = (
+                        comprehensiveness - lower_bound_comprehensiveness
+                    ) / (upper_bound_comprehensiveness - lower_bound_comprehensiveness)
+                else:
+                    normalized_comprehensiveness = 0
 
                 # calculate sufficiency
                 sufficiency = 0
                 permutation_input_ids = input_ids.clone()
                 for token in token_ranking.flip(0):
                     permutation_input_ids[:, token] = mask_token_id
-                    sufficiency += max(
+                    sufficiency += (
                         full_output
                         - model(permutation_input_ids)
                         .logits.softmax(1)
                         .squeeze(0)
                         .cpu()[1]
-                        .item(),
-                        0,
+                        .item()
                     )
 
-                sufficiency /= (len(token_ranking) * full_output)
-                normalized_sufficiency = (sufficiency - lower_bound_sufficiency) / (
-                    upper_bound_sufficiency - lower_bound_sufficiency + 1e-10
-                )
-
-
+                sufficiency /= len(token_ranking)
+                if (upper_bound_sufficiency - lower_bound_sufficiency) != 0:
+                    normalized_sufficiency = (sufficiency - lower_bound_sufficiency) / (
+                        upper_bound_sufficiency - lower_bound_sufficiency
+                    )
+                else:
+                    normalized_sufficiency = 0
 
                 explanation_names.append(explanation_method)
                 comprehensiveness_before_normalization.append(comprehensiveness)
@@ -161,6 +172,8 @@ for model_name in model_names:
                 )
                 sufficiency_before_normalization.append(sufficiency)
                 sufficiency_after_normalization.append(normalized_sufficiency)
+                prob_list.append(full_output)
+                masked_input_list.append(masked_input_output)
                 id_list.append(example["id"])
 
     df = pd.DataFrame(
@@ -171,6 +184,8 @@ for model_name in model_names:
             "normalized_comprehensiveness": comprehensiveness_after_normalization,
             "sufficiency": sufficiency_before_normalization,
             "normalized_sufficiency": sufficiency_after_normalization,
+            "prob": prob_list,
+            "masked_input_prob": masked_input_list,
         }
     )
     df.to_csv(f"results/yelp_polarity_results_{model_name.split('/')[1]}.csv")

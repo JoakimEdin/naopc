@@ -32,14 +32,13 @@ for model_name in model_names:
 
 df = pd.concat(dataframes)
 sns.set_theme(style="whitegrid", context="paper", palette="colorblind", font_scale=1)
-sns.histplot(data=df, x="comprehensiveness", hue="model", kde=True, bins=20)
+sns.histplot(data=df, x="comprehensiveness", hue="model", kde=True, bins=30)
 plt.xlabel("Comprehensiveness")
 plt.ylabel("Frequency")
-plt.title("Comprehensiveness")
 # plot vertical line representing the average
 print(df.groupby("model")["comprehensiveness"].describe())
 print(df.groupby("model")["sufficiency"].describe())
-
+plt.xlim(-0.1, 1.1)
 
 plt.savefig("results/comprehensiveness.png")
 
@@ -50,5 +49,5 @@ sns.histplot(data=df, x="sufficiency", hue="model", kde=True, bins=50)
 plt.xlabel("Sufficiency")
 plt.ylabel("Frequency")
 plt.title("Sufficiency")
-plt.xlim(0, 0.5)
+plt.xlim(-0.2, 0.5)
 plt.savefig("results/sufficiency.png")

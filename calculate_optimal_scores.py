@@ -14,7 +14,7 @@ model_names = [
     "textattack/roberta-base-imdb",
 ]
 
-CLAMP_NEGATIVE_VALUES = True  # clamp negative logits to 0
+CLAMP_NEGATIVE_VALUES = False  # clamp negative logits to 0
 LOGITS_SCORES = False
 
 
@@ -94,6 +94,8 @@ for model_name in model_names:
     comprehensiveness_order_list = []
     sufficiency_order_list = []
     number_of_elements_list = []
+    prob_list = []
+    masked_input_list = []
 
     df = pd.read_parquet(
         f"results/yelp_polarity_permutations_{model_name.split('/')[1]}.parquet"
@@ -106,13 +108,14 @@ for model_name in model_names:
             torch.tensor(df[["positive_logit", "negative_logit"]].values), dim=1
         ).numpy()[:, 0]
 
-    full_input_logit = df[df["key"] == "[]"][["id", "pred"]].rename({"pred": "full_input_logit"}, axis=1)
+    full_input_logit = df[df["key"] == "[]"][["id", "pred"]].rename(
+        {"pred": "full_input_logit"}, axis=1
+    )
     df = df.merge(full_input_logit, on="id")
     df["pred_diff"] = df["full_input_logit"] - df["pred"]
 
     if CLAMP_NEGATIVE_VALUES:
         df["pred_diff"] = df["pred_diff"].clip(0)
-
 
     for element_id in df["id"].unique():
         df_id = df[df["id"] == element_id]
@@ -125,8 +128,8 @@ for model_name in model_names:
         for index, row in df_id.iterrows():
             key = row["key"][1:-1].replace(" ", "")
             if len(key) > 0:
-                key += "," 
-            
+                key += ","
+
             d[key] = row["pred_diff"]
 
         min_max_lookup["min"] = 100.1
@@ -140,23 +143,26 @@ for model_name in model_names:
         max_order = vector.copy()
 
         tic = time.time()
-        min_order, max_order = permutations(vector, min_order, max_order, min_max_lookup, d)
+        min_order, max_order = permutations(
+            vector, min_order, max_order, min_max_lookup, d
+        )
         print("Time taken: ", time.time() - tic)
 
         min_value = min_max_lookup["min"]
         max_value = min_max_lookup["max"]
 
-        all_mask_value = d[get_key(vector)]
+        all_mask_diff_value = d[get_key(vector)]
 
+        # calculate the best possible comprehensiveness and sufficiency
+        comprehensiveness = (max_value + all_mask_diff_value) / number_of_elements
+        sufficiency = (min_value + all_mask_diff_value) / number_of_elements
 
-        comprehensiveness = (
-            (max_value  + all_mask_value) / number_of_elements
-        ) / df_id["full_input_logit"].values[0]
-
-
-        sufficiency = (
-            (min_value + all_mask_value) / number_of_elements
-        ) / df_id["full_input_logit"].values[0]
+        full_input_output = df_id["full_input_logit"].values[0]
+        masked_input_output = df_id[df_id["key"] == str(vector.tolist())]["pred"].values[0]
+        
+        # # normalize the scores according to the full input output and the output when all features are masked
+        # comprehensiveness = (comprehensiveness) / (full_input_output-empty_input_output)
+        # sufficiency = (sufficiency) / (full_input_output-empty_input_output)
 
         print("Best possible comprensiveness score: ", comprehensiveness)
         print("Best possible comprehensiveness order: ", max_order)
@@ -170,6 +176,9 @@ for model_name in model_names:
         comprehensiveness_order_list.append(max_order)
         sufficiency_order_list.append(min_order)
         number_of_elements_list.append(number_of_elements)
+        prob_list.append(full_input_output)
+        masked_input_list.append(masked_input_output)
+
 
     results_df = pd.DataFrame(
         {
@@ -179,7 +188,10 @@ for model_name in model_names:
             "comprehensiveness_order": comprehensiveness_order_list,
             "sufficiency_order": sufficiency_order_list,
             "number_of_elements": number_of_elements_list,
+            "prob": prob_list,
+            "masked_input": masked_input_list,
         }
     )
-    results_df.to_parquet(f"results/yelp_best_scores_{model_name.split('/')[1]}.parquet")
-
+    results_df.to_parquet(
+        f"results/yelp_best_scores_{model_name.split('/')[1]}.parquet"
+    )
