@@ -78,6 +78,154 @@ def embedding_attributions_to_token_attributions(
 
     return torch.norm(attributions, p=2, dim=-1)
 
+def get_comprehensiveness_solver_callable(
+        *args,
+        **kwargs,
+    ):
+    return get_pertubation_solver_callable(
+        *args,
+        **kwargs,
+        descending=True
+    )
+
+def get_sufficiency_solver_callable(
+        *args,
+        **kwargs,
+    ):
+    return get_pertubation_solver_callable(
+        *args,
+        **kwargs,
+        descending=False
+    )
+
+@torch.no_grad()
+def get_pertubation_solver_callable(
+    model: torch.nn.Module,
+    descending: bool,
+    baseline_token_id: int = 1,
+    cls_token_id: int = 0,
+    eos_token_id: int = 2,
+    beam_size: int = 50,
+    **kwargs,
+):
+    
+    class Explanation:
+        def __init__(self, feature_importances, remaining_features, previous_score, cumulative_score, non_cumulative_score):
+            self.feature_importances = feature_importances
+            self.remaining_features = remaining_features
+            self.previous_score = previous_score
+            self.cumulative_score = cumulative_score
+            self.non_cumulative_score = non_cumulative_score
+
+
+    def mask_input(x, value_indices):
+        mask = torch.ones_like(x)
+        mask[:,value_indices] = 0
+        return torch.where(
+            mask == 1,
+            x, 
+            torch.tensor(baseline_token_id)
+        )
+    
+
+    def get_prediction(input_ids, target_ids, device):
+        input_ids = input_ids.to(device)
+        with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=True):
+            y_pred = (
+                model(input_ids).logits
+            )  # [num_classes]
+            return torch.nn.functional.softmax(y_pred, dim=1)[:, target_ids].detach().cpu().squeeze(0)
+
+
+    def suggest_new_feature_importance(explanation: Explanation, feature_index: int, new_importance: int):
+        new_feature_importances = explanation.feature_importances.copy()
+        new_feature_importances[feature_index] = new_importance
+        new_remaining_features = explanation.remaining_features.copy()
+        new_remaining_features.remove(feature_index)
+        return Explanation(
+            feature_importances=new_feature_importances,
+            remaining_features=new_remaining_features,
+            previous_score=explanation.cumulative_score,
+            cumulative_score=None,
+            non_cumulative_score=0
+        )
+
+
+    def extend_explanation(explanation: Explanation, descending: bool):
+        # For an explanation, we propose N new explanations where N is the number of remaining features
+        # For each new explanation, we propose that the new feature importance is the current iteration,
+        # such that for any new feature, their importance decreases or increases by 1 each iteration
+        current_importance = len(explanation.remaining_features) - 1 if descending else len(explanation.feature_importances)
+        new_explanations = [
+            suggest_new_feature_importance(explanation, feature_index, current_importance)
+            for feature_index in explanation.remaining_features
+        ]
+        return new_explanations
+    
+
+    def get_key_from_importances(feature_importance):
+        return tuple(sorted(feature_importance.keys()))
+
+
+    def score_explanations(full_input_val: float, input_ids: torch.Tensor, explanations: list[Explanation], target_ids: torch.Tensor, device: str | torch.device):
+        model_pass_combinations = list(set(get_key_from_importances(explanation.feature_importances) for explanation in explanations))
+        combination_to_score = {}
+        model_inputs = torch.cat([mask_input(input_ids, combination) for combination in model_pass_combinations], dim=0)
+        preds = get_prediction(model_inputs, target_ids, device)
+        scores = full_input_val - preds
+        for combination, score in zip(model_pass_combinations, scores):
+            combination_to_score[combination] = score.item()
+        
+        new_explanations = []
+        for explanation in explanations:
+            key = get_key_from_importances(explanation.feature_importances)
+            explanation.cumulative_score = explanation.previous_score + combination_to_score[key]
+            explanation.non_cumulative_score = combination_to_score[key]
+            new_explanations.append(explanation)
+        return new_explanations
+
+
+    def pertubation_solver_callable(
+        input_ids: torch.Tensor,
+        target_ids: torch.Tensor,
+        device: str | torch.device,
+    ) -> torch.Tensor:
+        
+        full_input_score = get_prediction(input_ids, target_ids, device)
+
+        assert input_ids.shape[0] == 1, "Only one input at a time is supported"
+            
+        has_cls, has_eos = (input_ids[0, 0] == cls_token_id).item(), (input_ids[0, -1] == eos_token_id).item()
+        num_features = input_ids.shape[1] - has_cls - has_eos
+        token_range = torch.arange(0 + has_cls, num_features + has_cls)
+        beam = [
+            Explanation(
+                feature_importances={},
+                remaining_features=token_range.tolist(),
+                previous_score=0,
+                cumulative_score=0,
+                non_cumulative_score=0
+            )
+        ]
+
+        # One pass through all the features ensure that there are no
+        # "remaining features" left in any of the explanations
+        for _ in range(num_features):
+            explanations_to_score = []
+            for explanation in beam:
+                explanations_to_score += extend_explanation(explanation, descending)
+            new_proposed_explanations = score_explanations(full_input_score, input_ids, explanations_to_score, target_ids, device)
+            new_proposed_explanations = sorted(new_proposed_explanations, key=lambda x: x.cumulative_score, reverse=descending)
+
+            # Pick the top N explanations and re-do the search
+            beam = new_proposed_explanations[:beam_size]
+        best_explanation = beam[0]
+        attributions = torch.zeros(has_cls + num_features + has_eos)
+        for feature_index, importance in best_explanation.feature_importances.items():
+            attributions[feature_index] = importance
+        return attributions
+    
+    return pertubation_solver_callable
 
 def get_decompx_callable(
     model: torch.nn.Module,

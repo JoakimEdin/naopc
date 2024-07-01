@@ -6,11 +6,16 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 import datasets
 import pandas as pd
 import torch
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from rich.progress import track
+
 from transformers import AutoTokenizer
 
 from decompx.bert import BertForSequenceClassification
 from decompx.roberta import RobertaForSequenceClassification
 from feature_attribution_methods import (
+    get_comprehensiveness_solver_callable,
+    get_sufficiency_solver_callable,
     get_attention_callable,
     get_attingrad_callable,
     get_deeplift_callable,
@@ -37,6 +42,8 @@ model_names = [
 ]
 
 explanation_methods = {
+    "comprehensiveness_solver": get_comprehensiveness_solver_callable,
+    "suffiency_solver": get_sufficiency_solver_callable,
     "decompx": get_decompx_callable,
     "attingrad": get_attingrad_callable,
     "attention": get_attention_callable,
@@ -61,7 +68,6 @@ yelp = yelp.map(
     },
     batched=True,
 )
-
 
 for model_name in model_names:
     mask_token_id = tokenizers[model_name].mask_token_id
@@ -95,7 +101,7 @@ for model_name in model_names:
             eos_token_id=end_token_id,
         )
 
-        for example in yelp:
+        for example in track(yelp, description=f"Calculating {explanation_name}", total=len(yelp)):
             input_ids = (
                 torch.tensor(example[input_id_column_name]).to(device).unsqueeze(0)
             )
