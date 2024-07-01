@@ -6,7 +6,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 import datasets
 import pandas as pd
 import torch
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from transformers import AutoTokenizer
 from rich.progress import track
 
 from transformers import AutoTokenizer
