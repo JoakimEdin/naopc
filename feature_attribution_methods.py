@@ -3,7 +3,31 @@ from typing import Callable, Optional
 import captum
 import torch
 
+from decompx.decompx_utils import DecompXConfig
+
 Explainer = Callable[[torch.Tensor, torch.Tensor, str | torch.device], torch.Tensor]
+
+CONFIGS = DecompXConfig(
+    include_biases=True,
+    bias_decomp_type="absdot",
+    include_LN1=True,
+    include_FFN=True,
+    FFN_approx_type="GeLU_ZO",
+    include_LN2=True,
+    aggregation="vector",
+    include_classifier_w_pooler=True,
+    tanh_approx_type="ZO",
+    output_all_layers=True,
+    output_attention=None,
+    output_res1=None,
+    output_LN1=None,
+    output_FFN=None,
+    output_res2=None,
+    output_encoder=None,
+    output_aggregated="norm",
+    output_pooler="norm",
+    output_classifier=True,
+)
 
 
 class ModelWrapper(torch.nn.Module):
@@ -53,6 +77,38 @@ def embedding_attributions_to_token_attributions(
     """
 
     return torch.norm(attributions, p=2, dim=-1)
+
+
+def get_decompx_callable(
+    model: torch.nn.Module,
+    **kwargs,
+) -> Explainer:
+    model.eval()
+
+    def decompx_callable(
+        input_ids: torch.Tensor,
+        target_ids: torch.Tensor,
+        device: str | torch.device,
+    ) -> torch.Tensor:
+        input_ids = input_ids.to(device)
+
+        with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=True):
+            (
+                logits,
+                decompx_last_layer_outputs,
+                decompx_all_layers_outputs,
+            ) = model(
+                input_ids,
+                output_attentions=False,
+                return_dict=False,
+                output_hidden_states=False,
+                decompx_config=CONFIGS,
+            )
+
+        attributions = decompx_last_layer_outputs.classifier.detach().squeeze(0)
+        return attributions[:, target_ids]
+
+    return decompx_callable
 
 
 @torch.no_grad()
@@ -171,11 +227,11 @@ def get_attingrad_callable(
             output = model(input_ids, output_attentions=True)
             last_layer_attention = output.attentions[-1]
             last_layer_attention_average_heads = last_layer_attention.mean(1).squeeze(0)
-            last_layer_attention_average_heads_cls = last_layer_attention_average_heads[
-                0
-            ].unsqueeze(1).cpu()
+            last_layer_attention_average_heads_cls = (
+                last_layer_attention_average_heads[0].unsqueeze(1).cpu()
+            )
 
-        attingrad = (gradient_attributions * last_layer_attention_average_heads_cls)
+        attingrad = gradient_attributions * last_layer_attention_average_heads_cls
 
         return attingrad / attingrad.sum(0)
 
