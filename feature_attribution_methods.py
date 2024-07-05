@@ -106,6 +106,8 @@ def get_pertubation_solver_callable(
     cls_token_id: int = 0,
     eos_token_id: int = 2,
     beam_size: int = 50,
+    batch_size: int = 4096,
+    num_features_to_consider: Optional[int] = None,
     **kwargs,
 ):
     
@@ -127,14 +129,27 @@ def get_pertubation_solver_callable(
             torch.tensor(baseline_token_id)
         )
     
-
+    @torch.no_grad()
     def get_prediction(input_ids, target_ids, device):
-        input_ids = input_ids.to(device)
-        with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=True):
-            y_pred = (
-                model(input_ids).logits
-            )  # [num_classes]
-            return torch.nn.functional.softmax(y_pred, dim=1)[:, target_ids].detach().cpu().squeeze(0)
+        # Create dataloader batching the input_ids
+        temp_dataloader = torch.utils.data.DataLoader(
+            input_ids,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=0,
+        )
+
+        outs = []
+
+        for input_ids_batch in temp_dataloader:
+            input_ids_batch = input_ids_batch.to(device)
+            with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=True):
+                y_pred = (
+                    model(input_ids_batch).logits
+                )  # [num_classes]
+                out = torch.nn.functional.softmax(y_pred, dim=1)[:, target_ids].detach().cpu()
+                outs.append(out)
+        return torch.cat(outs, dim=0)
 
 
     def suggest_new_feature_importance(explanation: Explanation, feature_index: int, new_importance: int):
@@ -183,7 +198,28 @@ def get_pertubation_solver_callable(
             explanation.non_cumulative_score = combination_to_score[key]
             new_explanations.append(explanation)
         return new_explanations
+    
+    def truncate_to_feature_options(new_explanations: list[Explanation], initial_explanations: dict, n_features: int):
 
+        if initial_explanations is None:
+            return new_explanations
+        
+        initial_explanation_keys = list(initial_explanations.keys())
+
+        truncated_explanations = []
+        for explanation in new_explanations:
+            importances_keys = list(explanation.feature_importances.keys())
+            newly_added_feature = importances_keys[-1]
+            search_range = n_features - 1
+            for feature_index in explanation.feature_importances.keys():
+                if feature_index in initial_explanations:
+                    search_range += 1
+            top_keys = set(initial_explanation_keys[:search_range])
+            if newly_added_feature in top_keys:
+                truncated_explanations.append(explanation)
+
+        
+        return truncated_explanations
 
     def pertubation_solver_callable(
         input_ids: torch.Tensor,
@@ -208,14 +244,22 @@ def get_pertubation_solver_callable(
             )
         ]
 
+        initial_explanations = None
+
         # One pass through all the features ensure that there are no
         # "remaining features" left in any of the explanations
+        #top_n_features = [x.item()for x in token_range]
         for _ in range(num_features):
             explanations_to_score = []
             for explanation in beam:
                 explanations_to_score += extend_explanation(explanation, descending)
+            if num_features_to_consider is not None:
+                new_proposed_explanations = truncate_to_feature_options(explanations_to_score, initial_explanations, num_features_to_consider)
             new_proposed_explanations = score_explanations(full_input_score, input_ids, explanations_to_score, target_ids, device)
             new_proposed_explanations = sorted(new_proposed_explanations, key=lambda x: x.cumulative_score, reverse=descending)
+            if initial_explanations is None:
+                initial_explanations = new_proposed_explanations
+                initial_explanations = {list(x.feature_importances.keys())[0]: x.cumulative_score for i, x in enumerate(initial_explanations)}
 
             # Pick the top N explanations and re-do the search
             beam = new_proposed_explanations[:beam_size]
@@ -224,6 +268,95 @@ def get_pertubation_solver_callable(
         for feature_index, importance in best_explanation.feature_importances.items():
             attributions[feature_index] = importance
         return attributions
+
+
+    def pertubation_solver_callable_chunked(
+        input_ids: torch.Tensor,
+        target_ids: torch.Tensor,
+        device: str | torch.device,
+    ) -> torch.Tensor:
+        """
+        Experimental algorithm that partitions the input space into chunks of (currently)
+        15 tokens, solves each chunk independently, and then merges the attributions based
+        on the total score chunks
+        """
+        
+        has_cls, has_eos = (input_ids[0, 0] == cls_token_id).item(), (input_ids[0, -1] == eos_token_id).item()
+
+        end_index = -1 if has_eos else len(input_ids[1])
+        cleaned_input = input_ids[:,0+has_cls:end_index]
+        # Split into chunks of 15
+        chunks = [cleaned_input[0, i:i + 15] for i in range(0, cleaned_input.shape[1], 15)]
+        # Add cls and eos tokens to each chunk if has_cls and has_eos
+
+        all_attributions = []
+
+        start_index = 0
+        for chunk_ids in chunks:
+
+            # Create a tensor of mask tokens the size of the input_ids
+            chunk = torch.ones_like(cleaned_input) * baseline_token_id
+            # Insert the chunk ids starting at the start_index
+            chunk[0, start_index:start_index + chunk_ids.shape[0]] = chunk_ids
+
+            # Token range starts at cls_token and the start_index
+            num_features = chunk_ids.shape[0]
+            token_range = torch.arange(start_index + has_cls, start_index + num_features + has_cls)
+
+            if has_cls:
+                chunk = torch.cat([torch.tensor([cls_token_id]).unsqueeze(0).to(device), chunk], dim=-1)
+            if has_eos:
+                chunk = torch.cat([chunk, torch.tensor([eos_token_id]).unsqueeze(0).to(device)], dim=-1)
+
+            full_input_score = get_prediction(chunk, target_ids, device)
+
+            assert chunk.shape[0] == 1, "Only one input at a time is supported"
+            beam = [
+                Explanation(
+                    feature_importances={},
+                    remaining_features=token_range.tolist(),
+                    previous_score=0,
+                    cumulative_score=0,
+                    non_cumulative_score=0
+                )
+            ]
+
+            # One pass through all the features ensure that there are no
+            # "remaining features" left in any of the explanations
+            #top_n_features = [x.item()for x in token_range]
+            for _ in range(num_features):
+                explanations_to_score = []
+                for explanation in beam:
+                    explanations_to_score += extend_explanation(explanation, descending)
+
+                new_proposed_explanations = score_explanations(full_input_score, input_ids, explanations_to_score, target_ids, device)
+                new_proposed_explanations = sorted(new_proposed_explanations, key=lambda x: x.cumulative_score, reverse=descending)
+
+                # Pick the top N explanations and re-do the search
+                beam = new_proposed_explanations[:beam_size]
+            best_explanation = beam[0]
+
+            attributions = torch.zeros(has_cls + num_features + has_eos)
+            for feature_index, importance in best_explanation.feature_importances.items():
+                attributions[feature_index-start_index] = importance
+            all_attributions.append((attributions, best_explanation.cumulative_score, start_index))
+            start_index += chunk_ids.shape[0]
+
+        # Sort all attributions by the cumulative score
+        end_index = -1 if has_eos else len(input_ids[1])
+        all_attributions = sorted(all_attributions, key=lambda x: x[1], reverse=descending)
+        all_attributions = [(x[0][has_cls:end_index], x[2]) for x in all_attributions]
+        attribution_tensor = torch.zeros((has_cls + cleaned_input.shape[1] + has_eos))
+        attribution_currently = len(attribution_tensor)
+
+        for _, (attributions, start_index) in enumerate(all_attributions):
+            idx_attribution_dict = {idx: attribution for idx, attribution in enumerate(attributions)}
+            idx_attribution_dict = {k: v for k, v in sorted(idx_attribution_dict.items(), key=lambda item: item[1], reverse=descending)}
+            for idx, _ in idx_attribution_dict.items():
+                attribution_tensor[has_cls+start_index+idx] = attribution_currently
+                attribution_currently -= 1
+        return attribution_tensor
+    
     
     return pertubation_solver_callable
 
