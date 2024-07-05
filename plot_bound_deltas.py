@@ -108,14 +108,14 @@ ax_comp.set_title("Comprehensiveness")
 ax_comp.set_xlabel("Distance to upper bound")
 ax_comp.set_ylabel("Frequency")
 ax_comp.legend()
-fig_comp.savefig("comprehensiveness_delta_histogram.png")
+fig_comp.savefig("results/comprehensiveness_delta_histogram.png")
 
 # Save fig_suff
 ax_suff.set_title("Sufficiency")
 ax_suff.set_xlabel("Distance to lower bound")
 ax_suff.set_ylabel("Frequency")
 ax_suff.legend()
-fig_suff.savefig("sufficiency_delta_histogram.png")
+fig_suff.savefig("results/sufficiency_delta_histogram.png")
 
 print(avg_comprehension_diff)
 print(avg_sufficiency_diff)
