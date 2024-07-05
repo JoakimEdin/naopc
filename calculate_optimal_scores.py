@@ -106,11 +106,13 @@ for model_name in model_names:
             torch.tensor(df[["positive_logit", "negative_logit"]].values), dim=1
         ).numpy()[:, 0]
 
+    full_input_logit = df[df["key"] == "[]"][["id", "pred"]].rename({"pred": "full_input_logit"}, axis=1)
+    df = df.merge(full_input_logit, on="id")
+    df["pred_diff"] = df["full_input_logit"] - df["pred"]
 
-    
+    if CLAMP_NEGATIVE_VALUES:
+        df["pred_diff"] = df["pred_diff"].clip(0)
 
-
-    
 
     for element_id in df["id"].unique():
         df_id = df[df["id"] == element_id]
@@ -119,11 +121,6 @@ for model_name in model_names:
 
         d = Dict()
         min_max_lookup = Dict()
-        no_mask_value = df_id[df_id["key"] == "[]"]["pred"].values[0]
-        df_id["pred_diff"] = no_mask_value - df["pred"]
-
-        if CLAMP_NEGATIVE_VALUES:
-            df_id["pred_diff"] = df_id["pred_diff"].clip(0)
 
         for index, row in df_id.iterrows():
             key = row["key"][1:-1].replace(" ", "")
@@ -154,12 +151,12 @@ for model_name in model_names:
 
         comprehensiveness = (
             (max_value  + all_mask_value) / number_of_elements
-        ) / no_mask_value
+        ) / df_id["full_input_logit"].values[0]
 
 
         sufficiency = (
             (min_value + all_mask_value) / number_of_elements
-        ) / no_mask_value
+        ) / df_id["full_input_logit"].values[0]
 
         print("Best possible comprensiveness score: ", comprehensiveness)
         print("Best possible comprehensiveness order: ", max_order)

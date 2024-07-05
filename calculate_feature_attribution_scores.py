@@ -9,13 +9,17 @@ import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from rich.progress import track
 
+from transformers import AutoTokenizer
 
+from decompx.bert import BertForSequenceClassification
+from decompx.roberta import RobertaForSequenceClassification
 from feature_attribution_methods import (
     get_comprehensiveness_solver_callable,
     get_sufficiency_solver_callable,
     get_attention_callable,
     get_attingrad_callable,
     get_deeplift_callable,
+    get_decompx_callable,
     get_gradient_x_input_callable,
     get_integrated_gradient_callable,
     get_kernelshap_callable,
@@ -40,6 +44,7 @@ model_names = [
 explanation_methods = {
     "comprehensiveness_solver": get_comprehensiveness_solver_callable,
     "suffiency_solver": get_sufficiency_solver_callable,
+    "decompx": get_decompx_callable,
     "attingrad": get_attingrad_callable,
     "attention": get_attention_callable,
     "gradient_x_input": get_gradient_x_input_callable,
@@ -50,7 +55,6 @@ explanation_methods = {
     "occlusion_1": get_occlusion_1_callable,
     "random_baseline": get_random_baseline_callable,
 }
-
 
 tokenizers = {}
 
@@ -72,9 +76,15 @@ for model_name in model_names:
     end_token_id = tokenizers[model_name].sep_token_id
 
     input_id_column_name = f"input_ids_{model_name}"
-    model = AutoModelForSequenceClassification.from_pretrained(
-        model_name, cache_dir="cache"
-    )
+    if "roberta" in model_name:
+        model = RobertaForSequenceClassification.from_pretrained(
+            model_name, cache_dir="cache"
+        )
+    else:
+        model = BertForSequenceClassification.from_pretrained(
+            model_name, cache_dir="cache"
+        )
+
     model.to(device)
     model.eval()
     target_label = torch.tensor([1]).to(device)
