@@ -4,6 +4,7 @@ import captum
 import torch
 
 from decompx.decompx_utils import DecompXConfig
+import random
 
 Explainer = Callable[[torch.Tensor, torch.Tensor, str | torch.device], torch.Tensor]
 
@@ -100,16 +101,122 @@ def get_sufficiency_solver_callable(
 
 @torch.no_grad()
 def get_pertubation_solver_callable(
-    model: torch.nn.Module,
+    model: torch.nn.Module | Callable,
     descending: bool,
     baseline_token_id: int = 1,
     cls_token_id: int = 0,
     eos_token_id: int = 2,
     beam_size: int = 50,
-    batch_size: int = 4096,
-    num_features_to_consider: Optional[int] = None,
+    batch_size: int = 1024,
+    num_top_features_to_consider: Optional[int] = None,
+    num_random_features_to_consider: Optional[int] = None,
+    greedy_initialisation: bool = False,
+    is_linear_regression: bool = False,
     **kwargs,
 ):
+
+    ###############################################################
+    ###############################################################
+    ############# LINEAR REGRESSION SPECIFIC FUNCTIONS ############
+    ###############################################################
+    ###############################################################
+
+    def get_linear_regression_prediction(input_ids, targets, device, **kwargs):
+        input_ids = input_ids.float().to(device)
+        outs = model(input_ids)
+        return outs
+
+    def greedy_token_truncate_linear_regression(full_input_val, input_ids, device):
+        removals, removal_scores = [], []
+        has_cls, has_eos = input_ids[0, 0] == cls_token_id, input_ids[0, -1] == eos_token_id
+
+
+        for _ in range(0 + has_cls, input_ids.shape[1] - has_eos):
+            permutations = []
+            token_indices = []
+            for j in range(1, input_ids.shape[1]-1):
+                if input_ids[0, j] == baseline_token_id:
+                    continue
+                permuted_input_ids = input_ids.clone()
+                permuted_input_ids[:, j] = baseline_token_id
+                permutations.append(permuted_input_ids)
+                token_indices.append(j)
+
+            for example, target in zip(permutations, token_indices):
+                out = get_linear_regression_prediction(example, device)
+                scores.append(out)
+                targets.append(target)
+            scores = torch.cat(scores, dim=0)
+            targets = torch.cat(targets, dim=0)
+            removals.append(targets[scores.argmax().item()])
+            removal_scores.append(scores.max().item())
+            input_ids[:, removals[-1]] = baseline_token_id
+        removals_deltas = abs(full_input_val - torch.tensor(removal_scores))
+        true_index = (removals_deltas >= full_input_val.item() * 0.01).nonzero()[0].item()
+        removals = removals[:true_index]
+        removals_deltas = removals_deltas[:true_index]
+        return removals, removals_deltas
+            
+    
+    @torch.no_grad()
+    def greedy_token_truncate(full_input_val, input_ids, device):
+        removals, removal_scores = [], []
+        has_cls, has_eos = input_ids[0, 0] == cls_token_id, input_ids[0, -1] == eos_token_id
+
+
+        for _ in range(0 + has_cls, input_ids.shape[1] - has_eos):
+            permutations = []
+            token_indices = []
+            for j in range(1, input_ids.shape[1]-1):
+                if input_ids[0, j] == baseline_token_id:
+                    continue
+                permuted_input_ids = input_ids.clone()
+                permuted_input_ids[:, j] = baseline_token_id
+                permutations.append(permuted_input_ids)
+                token_indices.append(j)
+
+
+            # Create dataset of permutations and token indices
+            temp_dataset = torch.utils.data.TensorDataset(
+                torch.stack(permutations),
+                torch.tensor(token_indices),
+            )
+
+            def collate_fn(batch):
+                values, targets = [], []
+                for value, target in batch:
+                    values.append(value)
+                    targets.append(target)
+                return torch.cat(values), torch.stack(targets)
+            
+            temp_dataloader = torch.utils.data.DataLoader(
+                temp_dataset,
+                batch_size=batch_size,
+                shuffle=False,
+                num_workers=0,
+                collate_fn=collate_fn,
+            )
+            scores = []
+            targets = []
+            for input_ids_batch, targets_batch in temp_dataloader:
+                input_ids_batch = input_ids_batch.to(device)
+                with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=True):
+                    y_pred = (
+                        model(input_ids_batch).logits
+                    )
+                    out = torch.nn.functional.softmax(y_pred, dim=1)[:, 1].detach().cpu()
+                    scores.append(out)
+                    targets.append(targets_batch)
+            scores = torch.cat(scores, dim=0)
+            targets = torch.cat(targets, dim=0)
+            removals.append(targets[scores.argmax().item()])
+            removal_scores.append(scores.max().item())
+            input_ids[:, removals[-1]] = baseline_token_id
+        removals_deltas = abs(full_input_val - torch.tensor(removal_scores))
+        true_index = (removals_deltas >= full_input_val.item() * 0.01).nonzero()[0].item()
+        removals = removals[:true_index]
+        removals_deltas = removals_deltas[:true_index]
+        return removals, removals_deltas
     
     class Explanation:
         def __init__(self, feature_importances, remaining_features, previous_score, cumulative_score, non_cumulative_score):
@@ -151,6 +258,9 @@ def get_pertubation_solver_callable(
                 outs.append(out)
         return torch.cat(outs, dim=0)
 
+    prediction_function = get_linear_regression_prediction if is_linear_regression else get_prediction
+    token_truncate_function = greedy_token_truncate_linear_regression if is_linear_regression else greedy_token_truncate
+
 
     def suggest_new_feature_importance(explanation: Explanation, feature_index: int, new_importance: int):
         new_feature_importances = explanation.feature_importances.copy()
@@ -186,7 +296,7 @@ def get_pertubation_solver_callable(
         model_pass_combinations = list(set(get_key_from_importances(explanation.feature_importances) for explanation in explanations))
         combination_to_score = {}
         model_inputs = torch.cat([mask_input(input_ids, combination) for combination in model_pass_combinations], dim=0)
-        preds = get_prediction(model_inputs, target_ids, device)
+        preds = prediction_function(model_inputs, target_ids, device)
         scores = full_input_val - preds
         for combination, score in zip(model_pass_combinations, scores):
             combination_to_score[combination] = score.item()
@@ -199,23 +309,39 @@ def get_pertubation_solver_callable(
             new_explanations.append(explanation)
         return new_explanations
     
-    def truncate_to_feature_options(new_explanations: list[Explanation], initial_explanations: dict, n_features: int):
+    def truncate_to_feature_options(new_explanations: list[Explanation], initial_explanations: dict, n_top_features: int, n_random_features: int):
 
         if initial_explanations is None:
             return new_explanations
         
         initial_explanation_keys = list(initial_explanations.keys())
+        initial_explanation_keys_set = set(initial_explanation_keys)
+
+        n_top_features = n_top_features or 0
+        n_random_features = n_random_features or 0
 
         truncated_explanations = []
         for explanation in new_explanations:
             importances_keys = list(explanation.feature_importances.keys())
             newly_added_feature = importances_keys[-1]
-            search_range = n_features - 1
-            for feature_index in explanation.feature_importances.keys():
-                if feature_index in initial_explanations:
-                    search_range += 1
-            top_keys = set(initial_explanation_keys[:search_range])
-            if newly_added_feature in top_keys:
+            if n_top_features > 0:
+                top_features_search_range = n_top_features - 1
+                for feature_index in explanation.feature_importances.keys():
+                    if feature_index in initial_explanations:
+                        top_features_search_range += 1
+                top_keys = set(initial_explanation_keys[:top_features_search_range])
+            else:
+                top_keys = set()
+            if n_random_features > 0:
+                random_keys_space = initial_explanation_keys_set - top_keys - {newly_added_feature} - set(importances_keys)
+                random_keys_space = list(random_keys_space)
+                random.shuffle(random_keys_space)
+                random_keys = random_keys_space[:n_random_features]
+            else:
+                random_keys = set()
+            available_keys = top_keys.union(random_keys)
+
+            if newly_added_feature in available_keys:
                 truncated_explanations.append(explanation)
 
         
@@ -227,13 +353,21 @@ def get_pertubation_solver_callable(
         device: str | torch.device,
     ) -> torch.Tensor:
         
-        full_input_score = get_prediction(input_ids, target_ids, device)
-
         assert input_ids.shape[0] == 1, "Only one input at a time is supported"
+
+        full_input_score = prediction_function(input_ids, target_ids, device)
             
         has_cls, has_eos = (input_ids[0, 0] == cls_token_id).item(), (input_ids[0, -1] == eos_token_id).item()
         num_features = input_ids.shape[1] - has_cls - has_eos
         token_range = torch.arange(0 + has_cls, num_features + has_cls)
+
+        if greedy_initialisation:
+            removals, removal_scores = token_truncate_function(full_input_score.squeeze(0), input_ids, device)
+            input_ids[:, removals] = baseline_token_id
+            removed_set = set([x.item() for x in removals])
+            token_range = torch.tensor([x for x in token_range if x not in removed_set])
+            num_features = (input_ids.shape[1] - has_cls - has_eos) - len(removals)
+
         beam = [
             Explanation(
                 feature_importances={},
@@ -245,7 +379,7 @@ def get_pertubation_solver_callable(
         ]
 
         initial_explanations = None
-
+ 
         # One pass through all the features ensure that there are no
         # "remaining features" left in any of the explanations
         #top_n_features = [x.item()for x in token_range]
@@ -253,8 +387,8 @@ def get_pertubation_solver_callable(
             explanations_to_score = []
             for explanation in beam:
                 explanations_to_score += extend_explanation(explanation, descending)
-            if num_features_to_consider is not None:
-                new_proposed_explanations = truncate_to_feature_options(explanations_to_score, initial_explanations, num_features_to_consider)
+            if num_top_features_to_consider is not None or num_random_features_to_consider is not None:
+                new_proposed_explanations = truncate_to_feature_options(explanations_to_score, initial_explanations, num_top_features_to_consider, num_random_features_to_consider)
             new_proposed_explanations = score_explanations(full_input_score, input_ids, explanations_to_score, target_ids, device)
             new_proposed_explanations = sorted(new_proposed_explanations, key=lambda x: x.cumulative_score, reverse=descending)
             if initial_explanations is None:
@@ -308,7 +442,7 @@ def get_pertubation_solver_callable(
             if has_eos:
                 chunk = torch.cat([chunk, torch.tensor([eos_token_id]).unsqueeze(0).to(device)], dim=-1)
 
-            full_input_score = get_prediction(chunk, target_ids, device)
+            full_input_score = prediction_function(chunk, target_ids, device)
 
             assert chunk.shape[0] == 1, "Only one input at a time is supported"
             beam = [
