@@ -1,7 +1,7 @@
 import pandas as pd
 
 model_names = [
-    # "JiaqiLee/robust-bert-yelp",
+    "JiaqiLee/robust-bert-yelp",
     "textattack/bert-base-uncased-yelp-polarity",
     "VictorSanh/roberta-base-finetuned-yelp-polarity",
     "textattack/bert-base-uncased-imdb",
@@ -16,6 +16,19 @@ model_dict = {
     "textattack/roberta-base-imdb": "RoBERTa IMDB",
 }
 
+explainer_dict = {
+    "occlusion_1": "Occlusion@1",
+    "lime": "LIME",
+    "kernelshap": "SHAP",
+    "integrated_gradient": "IG",
+    "random_baseline": "Random",
+    "gradient_x_input": "G x I",
+    "attention": "Attention",
+    "attingrad": "AttInGrad",
+    "decompx": "DecompX",
+    "deeplift": "DeepLIFT",
+}
+
 datafram_list = []
 for model_name in model_names:
     results_df = pd.read_csv(
@@ -25,7 +38,7 @@ for model_name in model_names:
     datafram_list.append(results_df)
 df = pd.concat(datafram_list)
 df = df[df["prob"]>0.5]
-df["explanation_method"]
+df["explanation_method"] = df["explanation_method"].apply(lambda x: explainer_dict[x])
 results = df.groupby([ "explanation_method", "model"]).agg(
     comprehensiveness_mean=('comprehensiveness', 'mean'),
     normalized_comprehensiveness_mean=('normalized_comprehensiveness', 'mean'),

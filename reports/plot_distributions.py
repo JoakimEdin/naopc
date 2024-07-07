@@ -31,23 +31,28 @@ for model_name in model_names:
 
 
 df = pd.concat(dataframes)
-sns.set_theme(style="whitegrid", context="paper", palette="colorblind", font_scale=1)
-sns.histplot(data=df, x="comprehensiveness", hue="model", kde=True, bins=30)
-plt.xlabel("Comprehensiveness")
+sns.set_theme(style="whitegrid", context="paper", palette="colorblind", font_scale=1.5)
+g = sns.histplot(data=df, x="comprehensiveness", hue="model", kde=True, bins=20)
+plt.xlabel("AOPC score")
 plt.ylabel("Frequency")
+# no legend title for the model
+plt.legend(title=None)
 # plot vertical line representing the average
 print(df.groupby("model")["comprehensiveness"].describe())
 print(df.groupby("model")["sufficiency"].describe())
+plt.tight_layout()
 plt.xlim(-0.1, 1.1)
 
-plt.savefig("results/comprehensiveness.png")
+plt.savefig("results/comprehensiveness.pdf", format="pdf")
 
 plt.clf()
 
 
-sns.histplot(data=df, x="sufficiency", hue="model", kde=True, bins=50)
-plt.xlabel("Sufficiency")
+g=sns.histplot(data=df, x="sufficiency", hue="model", kde=True, bins=50)
+plt.xlabel("AOPC score")
 plt.ylabel("Frequency")
-plt.title("Sufficiency")
 plt.xlim(-0.2, 0.5)
-plt.savefig("results/sufficiency.png")
+plt.tight_layout()
+g.legend_.set_title(None)
+
+plt.savefig("results/sufficiency.pdf", format="pdf")
