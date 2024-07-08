@@ -1,6 +1,19 @@
 import numpy as np
+import torch
 
+class BertWrapperTorch:
+    def __init__(self, model, device):
+        self.model = model.to(device)
+        self.device = device
+    
+    @torch.no_grad()
+    def get_predictions(self, batch_ids):
+        batch_ids = torch.LongTensor(batch_ids).to(self.device)
+        return self.model(batch_ids, None, None).logits.cpu().numpy()
 
+    def __call__(self, batch_ids):
+        return self.get_predictions(batch_ids)
+    
 class Explainer:
     def __init__(
         self,
@@ -11,11 +24,12 @@ class Explainer:
         output_indices=0,
         batch_size=2048,
         verbose=False,
+        device="cpu",
     ):
 
         input, baseline = self.arg_checks(input, baseline, data_xformer)
 
-        self.model = model
+        self.model = BertWrapperTorch(model, device)
         self.input = np.squeeze(input)
         self.baseline = np.squeeze(baseline)
         self.data_xformer = data_xformer
@@ -58,7 +72,7 @@ class Explainer:
             batch_sets = set_indices[b * self.batch_size : (b + 1) * self.batch_size]
             data_batch = []
             for index_tuple in batch_sets:
-                new_instance = context.copy()
+                new_instance = context.clone()
                 for i in index_tuple:
                     new_instance[i] = insertion_target[i]
 
@@ -94,9 +108,11 @@ class Archipelago(Explainer):
         baseline=None,
         data_xformer=None,
         output_indices=0,
-        batch_size=20,
+        batch_size=2048,
         interactive=False,
         verbose=False,
+        cls_token_id=-1,
+        eos_token_id=-1,
     ):
         Explainer.__init__(
             self,
@@ -113,6 +129,8 @@ class Archipelago(Explainer):
         self.interactive = interactive
         self.interactive_explanations = None
         self.max_interactive_attribution_magnitude = None
+        self.cls_token_id = cls_token_id
+        self.eos_token_id = eos_token_id
 
         if self.interactive:
             self.cache_interactive_explanations()
@@ -221,8 +239,9 @@ class Archipelago(Explainer):
         "Effects" are archattribute scores
         All three options are combined to reuse function calls
         """
-        num_feats = context.size
-        idv_indices = [(i,) for i in range(num_feats)]
+        has_cls, has_eos = (context[0] == self.cls_token_id).item(), (context[-1] == self.eos_token_id).item()
+        num_feats = context.shape[0] - has_cls - has_eos
+        idv_indices = [(i,) for i in range(0+has_cls, num_feats+has_cls)]
 
         preds = self.batch_set_inference(
             idv_indices, context, insertion_target, include_context=True
@@ -234,8 +253,8 @@ class Archipelago(Explainer):
         if get_interactions:
             pair_indices = []
             pairwise_effects = {}
-            for i in range(num_feats):
-                for j in range(i + 1, num_feats):
+            for i in range(0+has_cls, num_feats+has_cls):
+                for j in range(i + 1, num_feats+has_cls):
                     pair_indices.append((i, j))
 
             preds = self.batch_set_inference(pair_indices, context, insertion_target)

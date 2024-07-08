@@ -1,7 +1,7 @@
 import os
 import time
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "4"
 
 import datasets
 import pandas as pd
@@ -14,20 +14,7 @@ from transformers import AutoTokenizer
 from decompx.bert import BertForSequenceClassification
 from decompx.roberta import RobertaForSequenceClassification
 from archipelago.explainer import Archipelago
-from archipelago.text_utils import TextXformer
 
-class BertWrapperTorch:
-    def __init__(self, model, device):
-        self.model = model.to(device)
-        self.device = device
-    
-    @torch.no_grad()
-    def get_predictions(self, batch_ids):
-        batch_ids = torch.LongTensor(batch_ids).to(self.device)
-        return self.model(batch_ids, None, None).logits.cpu().numpy()
-
-    def __call__(self, batch_ids):
-        return self.get_predictions(batch_ids)
 
 BATCH_SIZE = 1024
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -85,25 +72,28 @@ for model_name in model_names:
         baseline_ids = input_ids.clone()
         baseline_ids[1:-1] = mask_token_id
 
-        xf = TextXformer(input_ids.numpy(), baseline_ids.numpy())
-
-        model_wrapper = BertWrapperTorch(model, device)
-        apgo = Archipelago(model_wrapper, data_xformer=xf, output_indices=target_label)
-        start_time = time.time()
+        apgo = Archipelago(model, input=input_ids, baseline=baseline_ids, output_indices=target_label, verbose=False, cls_token_id=start_token_id, eos_token_id=end_token_id)
+        # start_time = time.time()
         interactions_dict = apgo.archdetect()
 
-        pair_scores_dict = {tuple(pair): {} for pair in interactions_dict["pairwise_effects"].keys() if 0 not in pair}
+        apgo_invert = Archipelago(model, input=baseline_ids, baseline=input_ids, output_indices=target_label, verbose=False, cls_token_id=start_token_id, eos_token_id=end_token_id)
+        inverted_interactions_dict = apgo_invert.archdetect()
+        # print(f"Time taken: {time.time() - start_time}")
+
+        pair_scores_dict = {tuple(pair): {} for pair in interactions_dict["pairwise_effects"].keys()}
 
         for pair, score in interactions_dict["pairwise_effects"].items():
-            if 0 in pair:
-                continue
             pair_scores_dict[tuple(pair)]["effect_score"] = score
 
-
         for pair, score in interactions_dict["interactions"]:
-            if 0 in pair:
-                continue
             pair_scores_dict[tuple(pair)]["interaction_score"] = score
+
+        for pair, score in inverted_interactions_dict["pairwise_effects"].items():
+            pair_scores_dict[tuple(pair)]["inverted_effect_score"] = score
+
+        for pair, score in inverted_interactions_dict["interactions"]:
+            pair_scores_dict[tuple(pair)]["inverted_interaction_score"] = score
+
 
         id_list.append(example["id"])
         score_dicts.append(pair_scores_dict)
