@@ -108,7 +108,7 @@ for model_name in model_names:
             torch.tensor(df[["positive_logit", "negative_logit"]].values), dim=1
         ).numpy()[:, 0]
 
-    full_input_logit = df[df["key"] == "[]"][["id", "pred"]].rename(
+    full_input_logit = df[df["word_key"] == "[]"][["id", "pred"]].rename(
         {"pred": "full_input_logit"}, axis=1
     )
     df = df.merge(full_input_logit, on="id")
@@ -126,7 +126,7 @@ for model_name in model_names:
         min_max_lookup = Dict()
 
         for index, row in df_id.iterrows():
-            key = row["key"][1:-1].replace(" ", "")
+            key = row["word_key"][1:-1].replace(" ", "")
             if len(key) > 0:
                 key += ","
 
@@ -136,7 +136,7 @@ for model_name in model_names:
         min_max_lookup["max"] = 0.0
 
         number_of_elements = len(
-            df_id.iloc[df_id["key"].apply(len).argmax()]["key"].split()
+            df_id.iloc[df_id["word_key"].apply(len).argmax()]["word_key"].split()
         )
         vector = np.arange(1, number_of_elements + 1)
         min_order = vector.copy()
@@ -158,7 +158,7 @@ for model_name in model_names:
         sufficiency = (min_value + all_mask_diff_value) / number_of_elements
 
         full_input_output = df_id["full_input_logit"].values[0]
-        masked_input_output = df_id[df_id["key"] == str(vector.tolist())]["pred"].values[0]
+        masked_input_output = df_id[df_id["word_key"] == str(vector.tolist())]["pred"].values[0]
         
         # # normalize the scores according to the full input output and the output when all features are masked
         # comprehensiveness = (comprehensiveness) / (full_input_output-empty_input_output)
