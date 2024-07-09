@@ -100,6 +100,7 @@ for model_name in model_names:
     word_attribution_list = []
     id_list = []
     explanation_names = []
+    word_maps = []
 
     for explanation_name, explanation_method in explanation_methods.items():
         explanation_method_callable = explanation_method(
@@ -131,6 +132,7 @@ for model_name in model_names:
             word_attribution_list.append(word_attributions.numpy())
             id_list.append(example["id"])
             explanation_names.append(explanation_name)
+            word_maps.append(word_map.numpy())
 
     df = pd.DataFrame(
         {
@@ -138,6 +140,7 @@ for model_name in model_names:
             "token_attributions": token_attribution_list,
             "word_attributions": word_attribution_list,
             "explanation_method": explanation_names,
+            "word_map": word_maps,
         }
     )
     df.to_parquet(
