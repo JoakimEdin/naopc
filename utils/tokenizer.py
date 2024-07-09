@@ -65,6 +65,16 @@ def get_word_map_callable(
                 word_map.append(idx)
                 continue
 
+            if token == "\\" and i + 1 < len(tokens) - 1 and tokens[i+1].startswith("n"):
+                idx += 1
+                word_map.append(idx)
+                continue
+
+            # If token is all numbers and the previous token is a currency symbol, we treat it as a separate word
+            if re.match(r"^[0-9]*$", token) and i > 0 and re.match(r"^[\$\#\¢\£\€]*$", tokens[i-1]):
+                word_map.append(idx)
+                continue
+
             # This is slightly wonky, but the Roberta BPE encoding handles special characters in 2 ways:
             # 1) If there is only a single special character, it is joined with the preceding word
             # 2) If there are multiple special characters, they are treated as separate words
@@ -73,9 +83,10 @@ def get_word_map_callable(
             # If the current token is a special character and the previous token is also a special character,
             # we do not increment the word index.
             if not re.match(r"^[a-zA-Z0-9]*$", token):
+                if not special_token_seen:
+                    idx += 1
                 if i + 1 < len(tokens) - 1 and not re.match(r"^[a-zA-Z0-9]*$", tokens[i+1]):
                     if not special_token_seen:
-                        idx += 1
                         special_token_seen = True
                 word_map.append(idx)
                 continue
@@ -83,6 +94,9 @@ def get_word_map_callable(
             if space_between_words and not special_token_seen:
                 if not tokens[i-1] == "'":
                     idx += 1
+
+            if special_token_seen:
+                idx += 1
 
             word_map.append(idx)
             space_between_words = True
@@ -120,15 +134,22 @@ def get_word_map_callable(
                 continue
 
             # if the token only contains Ċ or Ġ characters
-            if re.match(r"^[ĊĠ:.,]+$", token):
+            if re.match(r"^[ĊĠ]+$", token):
                 space_between_words = True
                 if not include_space:
                     idx += 1
                 word_map.append(idx)
                 continue
 
+
             if token.startswith("Ġ"):
                 space_between_words = True
+                
+            if not re.match(r"^[a-zA-Z0-9]*$", token) and not token.startswith("Ġ"):
+                idx += 1
+                word_map.append(idx)
+                space_between_words = True
+                continue
 
             if space_between_words:
                 idx += 1
@@ -164,6 +185,5 @@ if __name__ == "__main__":
 
         if set(bert_word_map.tolist()) != set(roberta_word_map.tolist()):
             mishaps += 1
-
 
     print(f"Total pass: {len(yelp) - mishaps}, Total mishaps: {mishaps}")
