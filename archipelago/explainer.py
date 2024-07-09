@@ -8,8 +8,8 @@ class BertWrapperTorch:
     
     @torch.no_grad()
     def get_predictions(self, batch_ids):
-        batch_ids = torch.LongTensor(batch_ids).to(self.device)
-        return self.model(batch_ids, None, None).logits.cpu().numpy()
+        batch_ids = batch_ids.to(self.device)
+        return torch.nn.functional.softmax(self.model(batch_ids, None, None).logits, dim=1).cpu().numpy()
 
     def __call__(self, batch_ids):
         return self.get_predictions(batch_ids)
@@ -87,7 +87,7 @@ class Explainer:
                 else:
                     data_batch.append(context)
 
-            preds = self.model(np.array(data_batch))
+            preds = self.model(torch.stack(data_batch))
 
             for c, index_tuple in enumerate(batch_sets):
                 scores[index_tuple] = preds[c, self.output_indices]
@@ -107,12 +107,14 @@ class Archipelago(Explainer):
         input=None,
         baseline=None,
         data_xformer=None,
-        output_indices=0,
+        output_indices=1,
         batch_size=2048,
         interactive=False,
         verbose=False,
         cls_token_id=-1,
         eos_token_id=-1,
+        baseline_token_id=-1,
+        device="cpu",
     ):
         Explainer.__init__(
             self,
@@ -123,6 +125,7 @@ class Archipelago(Explainer):
             output_indices,
             batch_size,
             verbose,
+            device=device,
         )
         self.inter_sets = None
         self.main_effects = None
@@ -131,6 +134,7 @@ class Archipelago(Explainer):
         self.max_interactive_attribution_magnitude = None
         self.cls_token_id = cls_token_id
         self.eos_token_id = eos_token_id
+        self.baseline_token_id = baseline_token_id
 
         if self.interactive:
             self.cache_interactive_explanations()
@@ -171,7 +175,7 @@ class Archipelago(Explainer):
         inter_a = search_a["interactions"]
 
         # notice that input and baseline have swapped places in the arg list
-        search_b = self.search_feature_sets(self.input, self.baseline)
+        search_b = self.search_feature_sets(self.input, self.baseline, get_main_effects=get_main_effects, get_pairwise_effects=get_pairwise_effects)
         inter_b = search_b["interactions"]
 
         inter_strengths = {}
@@ -260,12 +264,23 @@ class Archipelago(Explainer):
             preds = self.batch_set_inference(pair_indices, context, insertion_target)
             pair_scores = preds["scores"]
 
+            context_mapped = context.clone()
+            context_mapped[context_mapped == self.baseline_token_id] = 0
+            context_mapped[context_mapped != 0] = 1
+
+            insertion_target_mapped = insertion_target.clone()
+            insertion_target_mapped[insertion_target_mapped == self.baseline_token_id] = 0
+            insertion_target_mapped[insertion_target_mapped != 0] = 1
+
             inter_scores = {}
             for i, j in pair_indices:
 
                 # interaction detection
-                ell_i = np.abs(context[i].item() - insertion_target[i].item())
-                ell_j = np.abs(context[j].item() - insertion_target[j].item())
+                ell_i = np.abs(context_mapped[i].item() - insertion_target_mapped[i].item())
+                ell_j = np.abs(context_mapped[j].item() - insertion_target_mapped[j].item())
+
+                ell_i = context[i].item() 
+
                 f_a = context_score
                 f_b = idv_scores[(i,)]
                 f_c = idv_scores[(j,)]
