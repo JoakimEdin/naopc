@@ -9,7 +9,7 @@ class BertWrapperTorch:
     @torch.no_grad()
     def get_predictions(self, batch_ids):
         batch_ids = batch_ids.to(self.device)
-        return torch.nn.functional.softmax(self.model(batch_ids, None, None).logits, dim=1).cpu().numpy()
+        return self.model(batch_ids, None, None).logits.cpu().numpy()
 
     def __call__(self, batch_ids):
         return self.get_predictions(batch_ids)
@@ -264,22 +264,9 @@ class Archipelago(Explainer):
             preds = self.batch_set_inference(pair_indices, context, insertion_target)
             pair_scores = preds["scores"]
 
-            context_mapped = context.clone()
-            context_mapped[context_mapped == self.baseline_token_id] = 0
-            context_mapped[context_mapped != 0] = 1
-
-            insertion_target_mapped = insertion_target.clone()
-            insertion_target_mapped[insertion_target_mapped == self.baseline_token_id] = 0
-            insertion_target_mapped[insertion_target_mapped != 0] = 1
 
             inter_scores = {}
             for i, j in pair_indices:
-
-                # interaction detection
-                ell_i = np.abs(context_mapped[i].item() - insertion_target_mapped[i].item())
-                ell_j = np.abs(context_mapped[j].item() - insertion_target_mapped[j].item())
-
-                ell_i = context[i].item() 
 
                 f_a = context_score
                 f_b = idv_scores[(i,)]
@@ -287,7 +274,6 @@ class Archipelago(Explainer):
                 f_d = pair_scores[(i, j)]
                 
                 numerator = f_a - f_b - f_c + f_d
-                denominator = ell_i * ell_j
                 
                 # The numerator should theorecially be zero when there aren't interactions 
                 # in the function f. However, it is possible that the numerator is not 
@@ -296,12 +282,8 @@ class Archipelago(Explainer):
                 # then we set the numerator to zero
                 if np.abs(numerator) / np.min(np.abs(np.array([f_a, f_b, f_c, f_d]))) < 1e-5:
                     numerator = 0.0
-                    
-                if denominator == 0.0:
-                    inter_scores[(i, j)] = 0.0
-                else:
-                    inter_scores[(i, j)] = numerator / denominator
 
+                inter_scores[(i, j)] = numerator
                 if (
                     get_pairwise_effects
                 ):  # leverage existing function calls to compute pairwise effects
