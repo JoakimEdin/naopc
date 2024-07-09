@@ -6,6 +6,7 @@ import datasets
 import pandas as pd
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from utils.tokenizer import convert_word_map_to_dict
 
 BATCH_SIZE = 1024
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -108,24 +109,32 @@ for model_name in model_names:
                         "masked_input"
                     ].values[0]
                 )
-
-                attributions = feature_attributions_df[
+                
+                attributions_for_eample = feature_attributions_df[
                     (feature_attributions_df["id"] == example["id"])
                     & (
                         feature_attributions_df["explanation_method"]
                         == explanation_method
                     )
-                ]["feature_attributions"].values[0]
-                attributions = torch.from_numpy(attributions)[
+                ]
+
+                token_attributions = attributions_for_eample["token_attributions"].values[0]
+                word_attributions = attributions_for_eample["word_attributions"].values[0]
+                word_map = attributions_for_eample["word_map"].values[0]
+
+                word_map_dict = convert_word_map_to_dict(word_map)
+
+                word_attributions = torch.from_numpy(word_attributions)[
                     1:-1
                 ]  # ignore cls and sep token
-                token_ranking = torch.argsort(attributions, descending=True) + 1
+                word_ranking = torch.argsort(word_attributions, descending=True) + 1
                 permutation_input_ids = input_ids.clone()
 
-                # calculate comprehensiveness
                 comprehensiveness = 0
-                for token in token_ranking:
-                    permutation_input_ids[:, token] = mask_token_id
+                for word in word_ranking:
+                    token_indices = word_map_dict[word]
+
+                    permutation_input_ids[:, token_indices] = mask_token_id
                     comprehensiveness += (
                         full_output
                         - model(permutation_input_ids)
@@ -135,7 +144,7 @@ for model_name in model_names:
                         .item()
                     )
 
-                comprehensiveness /= len(token_ranking)
+                comprehensiveness /= len(word_ranking)
                 if (upper_bound_comprehensiveness - lower_bound_comprehensiveness) != 0:
                     normalized_comprehensiveness = (
                         comprehensiveness - lower_bound_comprehensiveness
@@ -146,8 +155,10 @@ for model_name in model_names:
                 # calculate sufficiency
                 sufficiency = 0
                 permutation_input_ids = input_ids.clone()
-                for token in token_ranking.flip(0):
-                    permutation_input_ids[:, token] = mask_token_id
+                for token in word_ranking.flip(0):
+                    token_indices = word_map_dict[word]
+
+                    permutation_input_ids[:, token_indices] = mask_token_id
                     sufficiency += (
                         full_output
                         - model(permutation_input_ids)
@@ -157,7 +168,7 @@ for model_name in model_names:
                         .item()
                     )
 
-                sufficiency /= len(token_ranking)
+                sufficiency /= len(word_ranking)
                 if (upper_bound_sufficiency - lower_bound_sufficiency) != 0:
                     normalized_sufficiency = (sufficiency - lower_bound_sufficiency) / (
                         upper_bound_sufficiency - lower_bound_sufficiency
