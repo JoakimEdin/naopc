@@ -43,8 +43,6 @@ model_names = [
 ]
 
 explanation_methods = {
-    "comprehensiveness_solver": get_comprehensiveness_solver_callable,
-    "suffiency_solver": get_sufficiency_solver_callable,
     "decompx": get_decompx_callable,
     "attingrad": get_attingrad_callable,
     "attention": get_attention_callable,
