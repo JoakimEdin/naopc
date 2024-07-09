@@ -40,7 +40,13 @@ yelp = yelp.map(
 
 yelp = yelp.map(
     lambda x: {
-        "word_length": max([len(set(x[f"word_map_{model_name}"])) for model_name in model_names])
+        f"word_length_{model_name}": len(set(x[f"word_map_{model_name}"])) for model_name in model_names
+    }
+)
+
+yelp = yelp.map(
+    lambda x: {
+        "word_length": max([x[f"word_length_{model_name}"] for model_name in model_names])
     }
 )
 
@@ -50,6 +56,7 @@ yelp = yelp.map(
     }
 )
 
+yelp = yelp.filter(lambda x: all(x[f"word_length_{model_name}"] == x[f"word_length_{model_names[0]}"] for model_name in model_names))
 yelp = yelp.filter(lambda x: (x["word_length"] <= 12) and (x["label"] == 1))
 yelp = yelp.sort("word_length", reverse=True)
 yelp_df = yelp.to_pandas().reset_index()
