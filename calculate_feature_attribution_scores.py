@@ -11,6 +11,7 @@ from rich.progress import track
 
 from transformers import AutoTokenizer
 
+from utils.tokenizer import get_word_map_callable
 from decompx.bert import BertForSequenceClassification
 from decompx.roberta import RobertaForSequenceClassification
 from feature_attribution_methods import (
@@ -80,16 +81,23 @@ for model_name in model_names:
         model = RobertaForSequenceClassification.from_pretrained(
             model_name, cache_dir="cache"
         )
+        word_map_callable = get_word_map_callable(
+            is_roberta=True, text_tokenizer=tokenizers[model_name]
+        )
     else:
         model = BertForSequenceClassification.from_pretrained(
             model_name, cache_dir="cache"
+        )
+        word_map_callable = get_word_map_callable(
+            is_roberta=False, text_tokenizer=tokenizers[model_name]
         )
 
     model.to(device)
     model.eval()
     target_label = torch.tensor([1]).to(device)
 
-    feature_attribution_list = []
+    token_attribution_list = []
+    word_attribution_list = []
     id_list = []
     explanation_names = []
 
@@ -113,14 +121,22 @@ for model_name in model_names:
                 .cpu()
                 .numpy()
             )
-            feature_attribution_list.append(attributions)
+
+            word_map = word_map_callable(input_ids)
+            word_attributions = torch.zeros((word_map.max() + 1))
+            for idx, feature in enumerate(word_map):
+                word_attributions[feature] += attributions[idx]
+            
+            token_attribution_list.append(attributions)
+            word_attribution_list.append(word_attributions.numpy())
             id_list.append(example["id"])
             explanation_names.append(explanation_name)
 
     df = pd.DataFrame(
         {
             "id": id_list,
-            "feature_attributions": feature_attribution_list,
+            "token_attributions": token_attribution_list,
+            "word_attributions": word_attribution_list,
             "explanation_method": explanation_names,
         }
     )
