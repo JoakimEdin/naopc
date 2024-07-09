@@ -56,7 +56,6 @@ for model_name in model_names:
     token_key_list = []
     word_key_list = []
 
-    passes = 0
     with torch.no_grad():
         for ids, token_key, word_key, input_ids_batch, attention_mask in track(dataloader, total=number_of_forward_passes, description=model_name):
             logits = model(input_ids_batch.to(device), attention_mask=attention_mask.to(device)).logits.cpu()
@@ -65,8 +64,6 @@ for model_name in model_names:
             id_list.extend(ids)
             token_key_list.extend(token_key)
             word_key_list.extend(word_key)
-            passes += 1
-    print(f"Number of passes: {passes}")
 
     df = pd.DataFrame({"id": id_list, "token_key": token_key_list, "word_key": word_key_list, "positive_logit": positive_logit_list, "negative_logit": negative_logit_list})
     df.to_parquet(f"results/yelp_polarity_permutations_{model_name.split('/')[1]}.parquet")
