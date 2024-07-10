@@ -132,7 +132,7 @@ for model_name in model_names:
 
                 comprehensiveness = 0
                 for word in word_ranking:
-                    token_indices = word_map_dict[word]
+                    token_indices = word_map_dict[word.item()]
 
                     permutation_input_ids[:, token_indices] = mask_token_id
                     comprehensiveness += (
@@ -155,9 +155,8 @@ for model_name in model_names:
                 # calculate sufficiency
                 sufficiency = 0
                 permutation_input_ids = input_ids.clone()
-                for token in word_ranking.flip(0):
-                    token_indices = word_map_dict[word]
-
+                for word in word_ranking.flip(0):
+                    token_indices = word_map_dict[word.item()]
                     permutation_input_ids[:, token_indices] = mask_token_id
                     sufficiency += (
                         full_output
