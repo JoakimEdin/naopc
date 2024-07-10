@@ -499,7 +499,8 @@ def get_decompx_callable(
     **kwargs,
 ) -> Explainer:
     model.eval()
-
+    
+    @torch.no_grad()
     def decompx_callable(
         input_ids: torch.Tensor,
         target_ids: torch.Tensor,
