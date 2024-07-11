@@ -4,6 +4,7 @@ import captum
 import torch
 
 from decompx.decompx_utils import DecompXConfig
+from utils.tokenizer import get_word_idx_to_token_idxs
 import random
 
 Explainer = Callable[[torch.Tensor, torch.Tensor, str | torch.device], torch.Tensor]
@@ -112,6 +113,7 @@ def get_pertubation_solver_callable(
     num_random_features_to_consider: Optional[int] = None,
     greedy_initialisation: bool = False,
     is_linear_regression: bool = False,
+    word_map_callable: Optional[Callable] = None,
     **kwargs,
 ):
 
@@ -227,13 +229,33 @@ def get_pertubation_solver_callable(
             self.non_cumulative_score = non_cumulative_score
 
 
-    def mask_input(x, value_indices):
+    def mask_input(x, value_indices, word_map=None):
         mask = torch.ones_like(x)
+        if word_map is not None:
+            transformed_indices = [
+                word_map[i] for i in value_indices
+            ]
+            value_indices = [item for sublist in transformed_indices for item in sublist]
         mask[:,value_indices] = 0
         return torch.where(
             mask == 1,
             x, 
             torch.tensor(baseline_token_id)
+        )
+
+    def unmask_input(x, value_indices, word_map=None):
+        mask = torch.zeros_like(x)
+        if word_map is not None:
+            transformed_indices = [
+                word_map[i] for i in value_indices
+            ]
+            value_indices = [item for sublist in transformed_indices for item in sublist]
+        mask[:,value_indices] = 1
+        mask[:,[0,-1]] = 1
+        return torch.where(
+            mask == 1,
+            x,
+            torch.tensor(baseline_token_id),
         )
     
     @torch.no_grad()
@@ -292,21 +314,26 @@ def get_pertubation_solver_callable(
         return tuple(sorted(feature_importance.keys()))
 
 
-    def score_explanations(full_input_val: float, input_ids: torch.Tensor, explanations: list[Explanation], target_ids: torch.Tensor, device: str | torch.device):
+    def score_explanations(full_input_val: float, input_ids: torch.Tensor, explanations: list[Explanation], target_ids: torch.Tensor, device: str | torch.device, mask_fn: Callable = mask_input, word_map: dict[int, list[int]] = None, baseline: bool = False):
         model_pass_combinations = list(set(get_key_from_importances(explanation.feature_importances) for explanation in explanations))
         combination_to_score = {}
-        model_inputs = torch.cat([mask_input(input_ids, combination) for combination in model_pass_combinations], dim=0)
+        model_inputs = torch.cat([mask_fn(input_ids, combination, word_map) for combination in model_pass_combinations], dim=0)
         preds = prediction_function(model_inputs, target_ids, device)
-        scores = full_input_val - preds
+        scores = full_input_val - preds if not baseline else preds - full_input_val
         for combination, score in zip(model_pass_combinations, scores):
             combination_to_score[combination] = score.item()
         
         new_explanations = []
         for explanation in explanations:
             key = get_key_from_importances(explanation.feature_importances)
-            explanation.cumulative_score = explanation.previous_score + combination_to_score[key]
-            explanation.non_cumulative_score = combination_to_score[key]
-            new_explanations.append(explanation)
+            new_explanation = Explanation(
+                feature_importances=explanation.feature_importances.copy(),
+                remaining_features=explanation.remaining_features.copy(),
+                non_cumulative_score=explanation.cumulative_score,
+                cumulative_score=explanation.previous_score + combination_to_score[key],
+                previous_score=explanation.previous_score
+            )
+            new_explanations.append(new_explanation)
         return new_explanations
     
     def truncate_to_feature_options(new_explanations: list[Explanation], initial_explanations: dict, n_top_features: int, n_random_features: int):
@@ -346,6 +373,125 @@ def get_pertubation_solver_callable(
 
         
         return truncated_explanations
+    
+    def approx_pertubation_solver_callable(
+        input_ids: torch.Tensor,
+        target_ids: torch.Tensor,
+        device: str | torch.device,
+    ) -> torch.Tensor:
+        
+        assert input_ids.shape[0] == 1, "Only one input at a time is supported"
+
+        full_input_score = prediction_function(input_ids, target_ids, device)
+        baseline_input = input_ids.clone()
+        baseline_input[0, 1:-1] = baseline_token_id
+        baseline_input_score = prediction_function(baseline_input, target_ids, device)
+            
+        has_cls, has_eos = (input_ids[0, 0] == cls_token_id).item(), (input_ids[0, -1] == eos_token_id).item()
+        if word_map_callable is not None:
+            word_map = get_word_idx_to_token_idxs(word_map_callable(input_ids))
+            num_features = len(word_map) - has_cls - has_eos
+        else:
+            num_features = input_ids.shape[1] - has_cls - has_eos
+
+        token_range = torch.arange(0 + has_cls, num_features + has_cls)
+
+        initial_explanation = Explanation(
+                feature_importances={},
+                remaining_features=token_range.tolist(),
+                previous_score=0,
+                cumulative_score=0,
+                non_cumulative_score=0
+            )
+        
+        explanations_to_score = extend_explanation(initial_explanation, descending)
+        masked_scored_explanations = score_explanations(full_input_score, input_ids, explanations_to_score, target_ids, device, word_map=word_map)
+        unmasked_scored_explanations = score_explanations(baseline_input_score, input_ids, explanations_to_score, target_ids, device, word_map=word_map, mask_fn=unmask_input, baseline=True)
+
+        unmask_strength_threshold = 0.05
+        mask_strength_threshold = 0.1
+
+        CLAMP_UNMASKED = True
+
+        strong_features = set()
+        weak_features = set()
+        interacting_features = set()
+
+        for i in range(len(masked_scored_explanations)):
+            explained_feature = list(masked_scored_explanations[i].feature_importances.keys())[0]
+            unmasked_score = max((unmasked_scored_explanations[i].cumulative_score, 0) if CLAMP_UNMASKED else unmasked_scored_explanations[i].cumulative_score)
+            if abs(masked_scored_explanations[i].cumulative_score - unmasked_score) > unmask_strength_threshold:
+                interacting_features.add(explained_feature)
+            elif unmasked_scored_explanations[i].cumulative_score > mask_strength_threshold:
+                strong_features.add(explained_feature)
+            else:
+                weak_features.add(explained_feature)
+
+        individual_feature_explanations = [
+            (list(e.feature_importances.keys())[0], e.cumulative_score) for e in masked_scored_explanations
+        ]
+        weak_feature_explanations = [
+            (feature, score) for feature, score in individual_feature_explanations if feature in weak_features
+        ]
+        weak_feature_explanations = sorted(weak_feature_explanations, key=lambda x: x[1], reverse=descending)
+        weak_feature_importances = {feature: -i for i, (feature, _) in enumerate(weak_feature_explanations, start=1)}
+
+        if descending:
+            beam = [
+                e for e in masked_scored_explanations if list(e.feature_importances.keys())[0] not in weak_features
+            ]
+            for e in beam:
+                e.remaining_features = list(set(token_range.tolist()) - weak_features)
+        else:
+            initial_state = Explanation(
+                    feature_importances=weak_feature_importances,
+                    remaining_features=list(set(token_range.tolist()) - weak_features),
+                    previous_score=0,
+                    non_cumulative_score=0,
+                    cumulative_score=0,
+                )
+            beam = score_explanations(full_input_score, input_ids, [initial_state], target_ids, device, word_map=word_map)
+            
+        num_remaining_features = len(strong_features) + len(interacting_features) 
+ 
+        for _ in range(num_remaining_features):
+            explanations_to_score = []
+            for explanation in beam:
+                explanations_to_score += extend_explanation(explanation, descending)
+            new_proposed_explanations = score_explanations(full_input_score, input_ids, explanations_to_score, target_ids, device, word_map=word_map)
+            new_proposed_explanations = sorted(new_proposed_explanations, key=lambda x: x.cumulative_score, reverse=descending)
+
+            # Pick the top N explanations and re-do the search
+            beam = new_proposed_explanations[:beam_size]
+
+        # Edge case - sometimes, when the examples are only 2 tokens long, they'll contain only weak features
+        if len(beam) > 0:
+            best_explanation = beam[0]
+        else:
+            best_explanation = Explanation(
+                feature_importances=weak_feature_importances,
+                remaining_features=[],
+                previous_score=0,
+                cumulative_score=0,
+                non_cumulative_score=0
+            )
+        # If we are calculating comprehensiveness we add the weak features to the explanation
+        # at the end. If we are calculating sufficiency, they were already prepended
+        if descending:
+            best_explanation.feature_importances.update(weak_feature_importances)
+            
+        attributions = torch.zeros(has_cls + len(best_explanation.feature_importances) + has_eos)
+        for feature_index, importance in best_explanation.feature_importances.items():
+            attributions[feature_index] = importance
+
+        # Convert word attributions to token attributions
+        token_attributions = torch.zeros(input_ids.shape[1])
+        if word_map:
+            for word_index, token_indices in word_map.items():
+                token_importance = attributions[word_index] / len(token_indices)
+                for token_index in token_indices:
+                    token_attributions[token_index] = token_importance
+        return token_attributions
 
     def pertubation_solver_callable(
         input_ids: torch.Tensor,
@@ -358,7 +504,11 @@ def get_pertubation_solver_callable(
         full_input_score = prediction_function(input_ids, target_ids, device)
             
         has_cls, has_eos = (input_ids[0, 0] == cls_token_id).item(), (input_ids[0, -1] == eos_token_id).item()
-        num_features = input_ids.shape[1] - has_cls - has_eos
+        if word_map_callable is not None:
+            word_map = get_word_idx_to_token_idxs(word_map_callable(input_ids))
+            num_features = len(word_map) - has_cls - has_eos
+        else:
+            num_features = input_ids.shape[1] - has_cls - has_eos
         token_range = torch.arange(0 + has_cls, num_features + has_cls)
 
         if greedy_initialisation:
@@ -401,7 +551,15 @@ def get_pertubation_solver_callable(
         attributions = torch.zeros(has_cls + num_features + has_eos)
         for feature_index, importance in best_explanation.feature_importances.items():
             attributions[feature_index] = importance
-        return attributions
+
+        # Convert word attributions to token attributions
+        token_attributions = torch.zeros(input_ids.shape[1])
+        if word_map:
+            for word_index, token_indices in word_map.items():
+                token_importance = attributions[word_index] / len(token_indices)
+                for token_index in token_indices:
+                    token_attributions[token_index] = token_importance
+        return token_attributions
 
 
     def pertubation_solver_callable_chunked(
@@ -492,14 +650,14 @@ def get_pertubation_solver_callable(
         return attribution_tensor
     
     
-    return pertubation_solver_callable
+    return approx_pertubation_solver_callable
 
 def get_decompx_callable(
     model: torch.nn.Module,
     **kwargs,
 ) -> Explainer:
     model.eval()
-    
+
     @torch.no_grad()
     def decompx_callable(
         input_ids: torch.Tensor,
