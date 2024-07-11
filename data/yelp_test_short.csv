@@ -1,0 +1,340 @@
+word_length,token_length,label,id,text
+9,9,1,0,a classic. nothing else to say
+11,11,1,1,Great products and Katie has been the best!
+8,8,1,2,Excellent food with great service.
+8,10,1,3,Jamba Juice and free WiFi.
+11,11,1,4,Awesome church full of the spirit of God!
+7,7,1,5,"Good price, matches quality"
+4,5,1,6,Decent!
+7,7,1,7,"Great place, good food"
+10,10,1,8,"love this place, in every way!"
+9,10,1,9,20% discount with AAA card :)
+5,5,1,10,not the best
+9,11,1,11,The margaritas wont do ya dirty!
+12,12,1,12,"Very expensive hotel, but very good service overall."
+11,12,1,13,Great Restaurant! Large Portions and good food.
+8,8,1,14,Major Upgrade to this gym!
+7,8,1,15,Friendly people great prices!
+8,8,1,16,the bomb! and cheap!
+12,12,1,17,Pretty awesome place. Great pools and kid friendly.
+9,10,1,18,Always good and dependable food and service
+12,12,1,19,Great tailor. They get it right every time!
+11,11,1,20,Great beef fried rice at a good price.
+8,8,1,21,Excellent food at great prices!
+8,8,1,22,Always a bargain to be found
+9,9,1,23,"Very good food, great service."
+10,13,1,24,Excellent food! The cheesecake is amazing!!!
+11,15,1,25,The Monetary is amazing we love the spinach enchilada
+8,8,1,26,"Great food, good service."
+8,9,1,27,Very good bagels and sandwiches!
+11,12,1,28,Best bakery in town! Feels like new York
+12,14,1,29,Amazing!  Hidden jewel of Tempe and wonderful people!
+7,13,1,30,Florentine bennidict was amazing!
+8,9,1,31,"Awesome bagels, nice people."
+5,6,1,32,still my FAV
+9,11,1,33,pretty girls but no lollipop selection.
+8,8,1,34,"Good, convenient, great prices"
+8,8,1,35,I love this Olive Garden!
+12,12,1,36,So good! Love starting my morning off here!
+9,10,1,37,Usual layout. Staff was friendly.
+8,9,1,38,Very helpful and knowledgeable staff.
+5,7,1,39,Awesome gyros!
+7,7,1,40,"Clean, nice staff."
+10,11,1,41,"Awesome Pho, Egg rolls & service'"
+7,7,1,42,Fast fresh & delicious!
+12,12,1,43,interesting place but they actually did a good job.
+8,10,1,44,My shower surround is gorgeous!!!
+11,12,1,45,So dive. Off the beaten path. Comfortable
+11,19,1,46,Great spot....sssssh...don't tell anyone
+9,10,1,47,"WiFi, breakfast, shuttle service."
+3,6,1,48,Delycios
+11,11,1,49,For the price the Tuesday buffet is great!
+9,9,1,50,best egg rolls in the city.
+11,14,1,51,The shrimp and grits were great...great atmosphere
+9,12,1,52,Friendliest bartenders and best martinis in Madison
+6,6,1,53,so much stuff!
+10,10,1,54,"Its good, albeit sometimes weird pizza."
+8,8,1,55,Awesome place for buying used bikes
+11,11,1,56,"Good work, fair prices, friendly people."
+7,9,1,57,Amazing food nostalgic vibe delicious
+6,6,1,58,Always worth the drive
+11,11,1,59,Great place for lunch. Service is good.
+5,6,1,60,Awesome burgers.
+9,9,1,61,Great people and even better food!
+8,8,1,62,Great food! Great service!
+12,14,1,63,best food in the west valley and awesome service!!!
+10,12,1,64,Great home made grub.  Amazing burgers.
+5,5,1,65,great service.
+6,9,1,66,Valenciana Paella is great
+7,7,1,67,Go for happy hour.
+4,7,1,68,Mojitos.
+12,12,1,69,Such a beautiful place. We felt very welcome.
+10,11,1,70,Can't go wrong with the cheese steak
+9,10,1,71,decent education at a decent price!
+7,7,1,72,Really good chocolate shake.
+7,7,1,73,Orange chicken is the best
+7,7,1,74,Quick and friendly service!
+11,11,1,75,"Love that place, pizza and wings are amazing"
+9,9,1,76,Nice place to go for kids !
+4,5,1,77,shark tank
+11,12,1,78,Absolutely the best sushi I have ever had!
+4,5,1,79,Classy!
+5,6,1,80,Cheap good food
+4,4,1,81,Excellent.
+12,12,1,82,They do a great job on my dirty car!
+7,7,1,83,The food is delicious!
+10,11,1,84,"Classy place, good food & drinks."
+11,14,1,85,Did the other reviews mention the FREE WIFI???
+12,14,1,86,Southwest Burger... that is all Im going to say
+5,5,1,87,The rabbit!
+8,10,1,88,Great Food!  HUGE Portions!
+7,7,1,89,Love the pizza inside.
+6,7,1,90,Favorite burgers in Madison
+7,7,1,91,Great selection of stores.
+6,6,1,92,Absolutely gorgeous place.
+7,8,1,93,one of my fav hotels
+6,7,1,94,Beautiful as ever!
+11,13,1,95,I've never had eyesex before until now!
+6,12,1,96,go here everytime......
+4,5,1,97,delicious!!
+6,7,1,98,Steak was delicious!
+11,13,1,99,I always have a great time gambling here!!!
+11,12,1,100,Always have breakfast here. Nowhere else compares.
+12,15,1,101,"Robin leach tapping a keg, fun and tasty chow"
+7,8,1,102,Nice n cumfy joint.
+5,5,1,103,a good buffet
+10,10,1,104,Everything you could want from a buffet!
+9,11,1,105,"Yum. Good, but pricey."
+7,7,1,106,Great food and good service
+6,6,1,107,Perfect summer Saturdays.
+6,8,1,108,Unreal chicken rosemary sandwich
+10,10,1,109,I love you. End of story.
+11,12,1,110,"Great sushi, big portions. Friendly staff."
+8,8,1,111,Best breakfast restaurant in Phoenix!
+8,8,1,112,The Fish N Chips are excellent
+6,7,1,113,Damn fine BBQ.
+8,8,1,114,Love this place food is delicious
+11,13,1,115,Have to try the brisket and the donuts.
+6,6,1,116,Great service great coffee
+5,7,1,117,Great show!!!
+8,8,1,118,Great food lots of portion!
+8,10,1,119,very good..   huge plates!!
+12,13,1,120,Outstanding food quality and customer service by the waiter.
+4,6,1,121,Kauai pie
+7,9,1,122,Best happy hour around!!!
+12,13,1,123,My dogs and I love taking our hikes here!
+11,11,1,124,Best Indian food I have eaten in Las Vegas
+8,8,1,125,i love this place so much
+3,4,1,126,Wonderful
+6,8,1,127,Great raspberry flavor!
+8,12,1,128,Chicken Kabobs where on Point!!!
+8,9,1,129,Awesome Staff and great food!!
+7,7,1,130,Good place to shop.
+10,10,1,131,Great breakfast. The best biscuits anywhere!
+9,12,1,132,Quickest jack in Phx with friendliest staff
+11,16,1,133,What can I say!? It's Starbucks....
+12,12,1,134,The staff was amazing at our Autism Walk meeting.
+9,11,1,135,"Very, very good mexican food."
+12,13,1,136,Always good.  Dan Dan noodles a spicy favorite.
+12,13,1,137,Great selection of international treats. A little pricey.
+9,9,1,138,Very nice selection of quality foods.
+9,11,1,139,Best BOBA eva! Enough said.
+12,14,1,140,Great service. Will put you in agreat mood.
+8,11,1,141,Fan-friggin-tastic!
+9,9,1,142,Good food for a decent price.
+11,11,1,143,Great place for suits and a great price.
+7,9,1,144,I basicly live here ..
+7,10,1,145,They sell Cirepil wax!
+12,15,1,146,"Honest & knowledgeable, when he answers the phone..."
+6,8,1,147,great food.  dt
+11,13,1,148,Awesome place to get fresh fruits and veggies.
+8,10,1,149,They are always so friendly!!!
+8,8,1,150,Good but it could be better
+5,5,1,151,worth the buck
+7,7,1,152,Good fast healthy option.
+6,8,1,153,Super yummy bakery!!
+9,9,1,154,I love this spot for lunch.
+7,7,1,155,Want to try more!
+10,10,1,156,Best Pizza I have had in Nevada.
+6,9,1,157,oooh moist creaminess.
+8,9,1,158,Best fast food burgers anywhere.
+8,8,1,159,Love that place! good memories
+7,11,1,160,nachos are the best!!!
+12,17,1,161,GREAT seats for VIVA ELVIS!!! THANKS so much!!!
+11,16,1,162,Best Sandwiches ever!!! You will love it....
+6,7,1,163,Surprisingly good food.
+7,7,1,164,Must try the food!
+10,11,1,165,"best hotel in vegas, hand down!"
+10,12,1,166,Highly recommend. .very professional and friendly :)
+7,7,1,167,"Good food, friendly service"
+9,11,1,168,Best Torta I've ever had.
+6,7,1,169,It's good.
+12,14,1,170,Super duper delicious miso black cod! Awesome house salad
+12,12,1,171,"Cool Place to work, and have great coffee."
+8,8,1,172,Best stir fry in town!
+8,13,1,173,Paneer is sooooo good here!!!
+8,8,1,174,This place rocks the universe!
+9,9,1,175,Great food and very friendly staff.
+9,10,1,176,Always the best burgers in the country
+10,10,1,177,By far the best bakery in town!
+10,10,1,178,I had a great massage from Lindsey!
+11,11,1,179,Absolutely too good! Too full to text!
+7,11,1,180,Chambord margaritas are killer!
+8,8,1,181,"Just awesome, i guarantee it"
+11,12,1,182,was great but sadly it is now closed :(
+9,11,1,183,SOOOO yummy! Everything is good.
+10,12,1,184,Yummy burger.  Worth going back again.
+8,8,1,185,"Great food, good atmosphere."
+11,12,1,186,"Oh well, Jo's is no more."
+8,11,1,187,Meilleur pizza dans le coin!
+5,6,1,188,It's fabulous
+7,7,1,189,See my tip below.
+11,11,1,190,Excellent and you can bring your own wine.
+9,11,1,191,This is my favorite Thai places!!!
+5,6,1,192,Great serviceee!
+11,13,1,193,Good for the price!  Pretty true italian.
+11,16,1,194,Saw Celine last night! She was FABULOUS!
+5,6,1,195,Pricey but good
+9,10,1,196,Always great tacos and XX amber.
+11,12,1,197,"Great Atmosphere, good beer, okay food."
+8,10,1,198,Excellent get the house pho p1
+6,7,1,199,Great fish tacos!
+7,7,1,200,One word: amazing.
+7,9,1,201,Excellent food service and ambience
+8,8,1,202,Great pub - good food.
+12,12,1,203,"Great food, you feel good after eating here."
+7,10,1,204,The Hummas is awesome!!!
+7,7,1,205,Club and French onion soup
+10,10,1,206,Great services. Cheese biscuits still amazing.
+6,7,1,207,Great Happy Hour Specials
+12,12,1,208,Love the specials. The Cuban is the best.
+5,6,1,209,Great massages!
+10,13,1,210,The revamped peanut butter pie is amazing !!
+9,11,1,211,Amazing place and great customer service !!!
+9,11,1,212,Only place I go to for AYCE
+11,17,1,213,Great selction.  Informative Staff.  LOTSA inventory!
+11,13,1,214,Mocha double frozen hot chocolate rocked my daughters world
+8,12,1,215,Bons burgers. Salle sympa.
+11,12,1,216,"Love this place!  Simply, yet delicious!!"
+6,6,1,217,Always the best.
+8,8,1,218,A usual place of mine.
+12,16,1,219,AMAZING!!! From start to finsh! Fab wine l
+6,6,1,220,Roger is great!
+10,13,1,221,Still good eats to be had here!!!!
+12,12,1,222,Great place! We always take our dogs here.
+12,13,1,223,Great local place.  Chicken sandwich is the best!
+5,8,1,224,Best Brunch!!
+9,9,1,225,"Great coffee, staff and atmosphere."
+10,10,1,226,Great food drinks service but was high priced
+7,9,1,227,consistently good food and service
+4,4,1,228,Good job
+11,11,1,229,Almost as good as the one in Hollywood!
+9,10,1,230,Great food!  Love the tacos!
+5,5,1,231,the nuts!
+11,11,1,232,Excellent food. Great service. Fine wine.
+12,12,1,233,Good breakfast place if you are in the area.
+7,11,1,234,Ashwaghanda!! Love it!
+11,12,1,235,I like the scone with cheese and tea cake
+11,11,1,236,Pretty good dim sum for in a hotel!
+11,12,1,237,Food was hot and tasty. Loved it!
+7,7,1,238,Best Mexican food in Arizona
+11,11,1,239,Great food and great service. Coming back.
+7,8,1,240,Loved the Salmon Dish!
+11,11,1,241,Good food and good service! Highly recommend!
+9,9,1,242,Unique food and a unique experience.
+9,11,1,243,Yummy but too expensive for everyday :(
+7,7,1,244,Great staff and doctors.
+5,7,1,245,Super clean!!!
+12,16,1,246,Lasagna is good. Pizzas and salads are average.
+7,7,1,247,Great instructors and staff.
+12,14,1,248,Will come back in September definitely enjoyed the drinks...
+6,6,1,249,good deals great chicken
+5,5,1,250,Awesome stuff!
+9,10,1,251,Wonderful service and tasty ice cream.
+10,14,1,252,Their salad is my favorite! Mmmmmmm...
+11,13,1,253,Champagne brunch was great and our waitress was wonderful
+11,13,1,254,a good eatery in the middle of art galaries
+7,7,1,255,Best shop in town!
+10,12,1,256,Great hotel!!  Love the Diamond Lounge!!
+5,5,1,257,Best best best
+8,8,1,258,Great food at affordable prices.
+12,12,1,259,Great hotel bar - unexpected find in steel city!
+10,10,1,260,Use open table to get a table!
+6,6,1,261,Best office in town
+9,13,1,262,best decaf americana ever.. probably...
+12,12,1,263,This place is the best Chinese food in Madison!
+12,13,1,264,Can't wait to go back and try more!
+8,9,1,265,Can't get enough white chocolate
+8,12,1,266,Delicious calzones and meatball subs!
+10,11,1,267,"Not the best but,it'll do"
+5,5,1,268,great steak sub
+11,11,1,269,Great spot and friendly staff. Highly recommended!
+7,7,1,270,Awesome burger and fries.
+11,14,1,271,Love this club!!!! Will definitely be back again
+11,11,1,272,Best little tucked away spot in the hotel.
+12,16,1,273,Awesome tacos!!! Very good margaritas!  Need more?
+12,14,1,274,Awesome burgers and dogs with a great secret sauce!!
+11,12,1,275,Amazing cocktails. Great food. Awesome service.
+9,11,1,276,It's a good noodle place.
+6,7,1,277,"WOW, Nice!"
+8,14,1,278,la mejor comida mexicana en CU
+9,12,1,279,Theresa is an awesome person and esthetician
+11,12,1,280,Try it it's like mom used to make
+10,14,1,281,Best Yogurt in town!!! Awesome!1
+12,15,1,282,Thit Heo Nuong is Amazing! Great Happy Hour!
+10,12,1,283,Brisket is awesome great atmosphere super friendly staff
+9,9,1,284,Great Beer selection and decent food.
+8,8,1,285,nice store real busy real friendly
+10,11,1,286,Great beer selection and really good burgers!
+12,14,1,287,Best frozen yogurt in the Valley. Very impressive!
+6,6,1,288,Big Delicious portions!
+9,12,1,289,Nice place to hangout with gf :)
+11,13,1,290,"Killer food. Lobster mac, and cheese!!!"
+5,5,1,291,Great breakfast.
+9,9,1,292,"Good, affordable and fast delivery!"
+12,12,1,293,"Food was quick and fresh, would definitely recommend."
+12,13,1,294,One size fits all but it's all delicious!
+7,11,1,295,Love Rema for facials!!!
+8,8,1,296,Great service and clean establishment!
+10,10,1,297,"The please is great, incredible variety!"
+5,5,1,298,Food is great
+8,8,1,299,"Nice office, nice staff!"
+10,10,1,300,Nice to have walking distance from home.
+11,17,1,301,very good tacos... love the steak tacos!!!
+7,9,1,302,great salads subpar service.
+9,11,1,303,I like their beer...seriously.
+5,6,1,304,Good spanish food
+10,13,1,305,"Heaven, I'm in heaven... Bacon"
+9,11,1,306,Great customer service!!! Will return!
+9,9,1,307,Very friendly bunch. Great service!
+9,14,1,308,Great pastrami sandwich and mesquite fries.
+8,8,1,309,Great food even better service!
+11,14,1,310,Food was good....service was just ok.
+9,12,1,311,Best risotto I've ever eaten.
+12,13,1,312,Been here twice and both times have been good.
+7,9,1,313,U gotta stop here...
+7,8,1,314,bomb burgers and fairly cheap
+10,10,1,315,Always a great source of Filipino food.
+8,11,1,316,Awsome!\nThank you!
+5,8,1,317,the best!!!!
+8,9,1,318,Cheapest gas in the neighborhood!
+12,14,1,319,Loved the breakfast! Protein Berry Pancakes and eggs!
+6,7,1,320,Best tacos in Arizona
+12,13,1,321,Good food. Decor not gonna get you laid.
+11,14,1,322,I love it!!! Everything is sooo good~
+9,9,1,323,Great service and prices are low!
+9,9,1,324,Not bad all. Love the beers
+6,6,1,325,Amazing as always!
+7,10,1,326,Hell's Kitchen Burger!!!
+12,15,1,327,"Terrible service, fantastic dumplings. Totally worth going."
+11,11,1,328,Good music. Good story. Good show.
+11,12,1,329,All of there food is delicious and sooo healthy
+9,12,1,330,Awesome Ph\u00f3 awesome service!
+11,11,1,331,best place to buy a bike in AZ.
+9,9,1,332,"Great Italian ice, nice location!"
+12,15,1,333,Fast service and the unsweetened iced tea is fabulous!
+8,9,1,334,Great Shops and Cool Concept!
+8,8,1,335,Great food! Good prices!
+6,10,1,336,Loved the Japchae!
+8,8,1,337,Great food! Friendly staff!
+11,12,1,338,Great store with good discounts on quality products.
