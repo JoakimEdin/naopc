@@ -6,8 +6,10 @@ import torch
 from numba import jit
 from numba.typed import Dict
 
+dataset_names = ["yelp", "sst2"]
 model_names = [
-    "JiaqiLee/robust-bert-yelp",
+    "textattack/bert-base-uncased-SST-2",
+    "textattack/roberta-base-SST-2",
     "textattack/bert-base-uncased-yelp-polarity",
     "VictorSanh/roberta-base-finetuned-yelp-polarity",
     "textattack/bert-base-uncased-imdb",
@@ -86,112 +88,112 @@ min_order = vector.copy()
 max_order = vector.copy()
 min_order, max_order = permutations(vector, min_order, max_order, min_max_lookup, d)
 
+for dataset_name in dataset_names:
+    for model_name in model_names:
+        upper_limit_list = []
+        lower_limit_list = []
+        id_list = []
+        upper_limit_order_list = []
+        lower_limit_order_list = []
+        number_of_elements_list = []
+        prob_list = []
+        masked_input_list = []
 
-for model_name in model_names:
-    comprehensiveness_list = []
-    sufficiency_list = []
-    id_list = []
-    comprehensiveness_order_list = []
-    sufficiency_order_list = []
-    number_of_elements_list = []
-    prob_list = []
-    masked_input_list = []
-
-    df = pd.read_parquet(
-        f"results/yelp_polarity_permutations_{model_name.split('/')[1]}.parquet"
-    )
-
-    if LOGITS_SCORES:
-        df["pred"] = df["positive_logit"]
-    else:
-        df["pred"] = torch.softmax(
-            torch.tensor(df[["positive_logit", "negative_logit"]].values), dim=1
-        ).numpy()[:, 0]
-
-    full_input_logit = df[df["word_key"] == "[]"][["id", "pred"]].rename(
-        {"pred": "full_input_logit"}, axis=1
-    )
-    df = df.merge(full_input_logit, on="id")
-    df["pred_diff"] = df["full_input_logit"] - df["pred"]
-
-    if CLAMP_NEGATIVE_VALUES:
-        df["pred_diff"] = df["pred_diff"].clip(0)
-
-    for element_id in df["id"].unique():
-        df_id = df[df["id"] == element_id]
-
-        print(df_id)
-
-        d = Dict()
-        min_max_lookup = Dict()
-
-        for index, row in df_id.iterrows():
-            key = row["word_key"][1:-1].replace(" ", "")
-            if len(key) > 0:
-                key += ","
-
-            d[key] = row["pred_diff"]
-
-        min_max_lookup["min"] = 100.1
-        min_max_lookup["max"] = 0.0
-
-        number_of_elements = len(
-            df_id.iloc[df_id["word_key"].apply(len).argmax()]["word_key"].split()
+        df = pd.read_parquet(
+            f"results/permutation_outputs/{dataset_name}_{model_name.split('/')[1]}.parquet"
         )
-        vector = np.arange(1, number_of_elements + 1)
-        min_order = vector.copy()
-        max_order = vector.copy()
 
-        tic = time.time()
-        min_order, max_order = permutations(
-            vector, min_order, max_order, min_max_lookup, d
+        if LOGITS_SCORES:
+            df["pred"] = df["positive_logit"]
+        else:
+            df["pred"] = torch.softmax(
+                torch.tensor(df[["positive_logit", "negative_logit"]].values), dim=1
+            ).numpy()[:, 0]
+
+        full_input_logit = df[df["word_key"] == "[]"][["id", "pred"]].rename(
+            {"pred": "full_input_logit"}, axis=1
         )
-        print("Time taken: ", time.time() - tic)
+        df = df.merge(full_input_logit, on="id")
+        df["pred_diff"] = df["full_input_logit"] - df["pred"]
 
-        min_value = min_max_lookup["min"]
-        max_value = min_max_lookup["max"]
+        if CLAMP_NEGATIVE_VALUES:
+            df["pred_diff"] = df["pred_diff"].clip(0)
 
-        all_mask_diff_value = d[get_key(vector)]
+        for element_id in df["id"].unique():
+            df_id = df[df["id"] == element_id]
 
-        # calculate the best possible comprehensiveness and sufficiency
-        comprehensiveness = (max_value + all_mask_diff_value) / number_of_elements
-        sufficiency = (min_value + all_mask_diff_value) / number_of_elements
+            print(df_id)
 
-        full_input_output = df_id["full_input_logit"].values[0]
-        masked_input_output = df_id[df_id["word_key"] == str(vector.tolist())]["pred"].values[0]
-        
-        # # normalize the scores according to the full input output and the output when all features are masked
-        # comprehensiveness = (comprehensiveness) / (full_input_output-empty_input_output)
-        # sufficiency = (sufficiency) / (full_input_output-empty_input_output)
+            d = Dict()
+            min_max_lookup = Dict()
 
-        print("Best possible comprensiveness score: ", comprehensiveness)
-        print("Best possible comprehensiveness order: ", max_order)
+            for index, row in df_id.iterrows():
+                key = row["word_key"][1:-1].replace(" ", "")
+                if len(key) > 0:
+                    key += ","
 
-        print("Best possible sufficiency score: ", sufficiency)
-        print("Best possible sufficiency order: ", min_order)
+                d[key] = row["pred_diff"]
 
-        id_list.append(element_id)
-        comprehensiveness_list.append(comprehensiveness)
-        sufficiency_list.append(sufficiency)
-        comprehensiveness_order_list.append(max_order)
-        sufficiency_order_list.append(min_order)
-        number_of_elements_list.append(number_of_elements)
-        prob_list.append(full_input_output)
-        masked_input_list.append(masked_input_output)
+            min_max_lookup["min"] = 100.1
+            min_max_lookup["max"] = 0.0
+
+            number_of_elements = len(
+                df_id.iloc[df_id["word_key"].apply(len).argmax()]["word_key"].split()
+            )
+            vector = np.arange(1, number_of_elements + 1)
+            min_order = vector.copy()
+            max_order = vector.copy()
+
+            tic = time.time()
+            min_order, max_order = permutations(
+                vector, min_order, max_order, min_max_lookup, d
+            )
+            print("Time taken: ", time.time() - tic)
+
+            min_value = min_max_lookup["min"]
+            max_value = min_max_lookup["max"]
+
+            all_mask_diff_value = d[get_key(vector)]
+
+            # calculate the best possible upper_limit and lower_limit
+            upper_limit = (max_value + all_mask_diff_value) / number_of_elements
+            lower_limit = (min_value + all_mask_diff_value) / number_of_elements
+
+            full_input_output = df_id["full_input_logit"].values[0]
+            masked_input_output = df_id[df_id["word_key"] == str(vector.tolist())]["pred"].values[0]
+            
+            # # normalize the scores according to the full input output and the output when all features are masked
+            # upper_limit = (upper_limit) / (full_input_output-empty_input_output)
+            # lower_limit = (lower_limit) / (full_input_output-empty_input_output)
+
+            print("Upper limit score: ", upper_limit)
+            print("Upper limit order: ", max_order)
+
+            print("Lower limit score: ", lower_limit)
+            print("Lower limit order: ", min_order)
+
+            id_list.append(element_id)
+            upper_limit_list.append(upper_limit)
+            lower_limit_list.append(lower_limit)
+            upper_limit_order_list.append(max_order)
+            lower_limit_order_list.append(min_order)
+            number_of_elements_list.append(number_of_elements)
+            prob_list.append(full_input_output)
+            masked_input_list.append(masked_input_output)
 
 
-    results_df = pd.DataFrame(
-        {
-            "id": id_list,
-            "comprehensiveness": comprehensiveness_list,
-            "sufficiency": sufficiency_list,
-            "comprehensiveness_order": comprehensiveness_order_list,
-            "sufficiency_order": sufficiency_order_list,
-            "number_of_elements": number_of_elements_list,
-            "prob": prob_list,
-            "masked_input": masked_input_list,
-        }
-    )
-    results_df.to_parquet(
-        f"results/yelp_best_scores_{model_name.split('/')[1]}.parquet"
-    )
+        results_df = pd.DataFrame(
+            {
+                "id": id_list,
+                "upper_limit": upper_limit_list,
+                "lower_limit": lower_limit_list,
+                "upper_limit_order": upper_limit_order_list,
+                "lower_limit_order": lower_limit_order_list,
+                "number_of_elements": number_of_elements_list,
+                "prob": prob_list,
+                "masked_input": masked_input_list,
+            }
+        )
+        results_df.to_parquet(
+            f"results/aopc_limits/{dataset_name}_{model_name.split('/')[1]}.parquet"
+        )
