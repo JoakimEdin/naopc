@@ -83,7 +83,7 @@ def get_word_map_callable(
             # If the current token is a special character and the previous token is also a special character,
             # we do not increment the word index.
             if not re.match(r"^[a-zA-Z0-9]*$", token):
-                if not special_token_seen:
+                if not special_token_seen and i > 1:
                     idx += 1
                 if i + 1 < len(tokens) - 1 and not re.match(r"^[a-zA-Z0-9]*$", tokens[i+1]):
                     if not special_token_seen:
@@ -146,7 +146,8 @@ def get_word_map_callable(
                 space_between_words = True
                 
             if not re.match(r"^[a-zA-Z0-9]*$", token) and not token.startswith("Ġ"):
-                idx += 1
+                if idx>1:
+                    idx += 1
                 word_map.append(idx)
                 space_between_words = True
                 continue
