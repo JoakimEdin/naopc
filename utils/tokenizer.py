@@ -12,7 +12,7 @@ def get_tokens(
         torch.tensor(input_ids).squeeze().tolist()
     )
 
-def convert_word_map_to_dict(word_map: torch.Tensor) -> dict[int, list[int]]:
+def get_word_idx_to_token_idxs(word_map: torch.Tensor) -> dict[int, list[int]]:
     """Convert a word map to a dictionary where the key is the word index and the value is a list of token indices that belong to that word.
     
     Args:
