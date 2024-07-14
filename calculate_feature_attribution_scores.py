@@ -15,8 +15,6 @@ from utils.tokenizer import get_word_map_callable
 from decompx.bert import BertForSequenceClassification
 from decompx.roberta import RobertaForSequenceClassification
 from feature_attribution_methods import (
-    get_comprehensiveness_solver_callable,
-    get_sufficiency_solver_callable,
     get_attention_callable,
     get_attingrad_callable,
     get_deeplift_callable,
@@ -32,7 +30,8 @@ from feature_attribution_methods import (
 BATCH_SIZE = 1024
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-dataset_names = ["yelp", "sst2", "imdb"]
+#dataset_names = ["yelp", "sst2", "imdb"]
+dataset_names = ["yelp"]
 model_names = [
     "textattack/bert-base-uncased-SST-2",
     "textattack/roberta-base-SST-2",
@@ -61,7 +60,7 @@ for model_name in model_names:
     tokenizers[model_name] = AutoTokenizer.from_pretrained(model_name)
 
 for dataset_name in dataset_names:
-    for length in ["short", "long"]:
+    for length in ["short"]:#, "long"]:
 
         if (dataset_name == "imdb") and (length == "short"):
             continue # imdb short doesn't exist
