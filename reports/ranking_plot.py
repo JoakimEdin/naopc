@@ -43,9 +43,18 @@ for model_name in model_names:
     aopc_limits = pd.read_parquet(
         f"results/aopc_limits_exact/{dataset_name}_{model_name.split('/')[1]}.parquet"
     )
+    aopc_approx_limits = pd.read_parquet(
+        f"results/aopc_limits_approx/{dataset_name}_{length}_feature_attributions_decompx_beam_size_50_{model_name.split('/')[1]}.parquet"
+    )
     results_df = results_df.merge(
         aopc_limits[["id", "upper_limit", "lower_limit"]], on="id"
     )
+    results_df = results_df.merge(
+        aopc_approx_limits,
+        on="id",
+        suffixes=("", "_approx"),
+    )
+
     results_df["model"] = model_dict[model_name]
     dataframe_list.append(results_df)
 df = pd.concat(dataframe_list)
@@ -56,9 +65,17 @@ df["normalized_comprehensiveness"] = (df["comprehensiveness"] - df["lower_limit"
 df["normalized_sufficiency"] = (df["sufficiency"] - df["lower_limit"]) / (
     df["upper_limit"] - df["lower_limit"]
 )
+df["approx_normalized_comprehensiveness"] = (df["comprehensiveness"] - df["sufficiency_approx"]) / (
+    df["comprehensiveness_approx"] - df["sufficiency_approx"]
+)
+df["approx_normalized_sufficiency"] = (df["sufficiency"] - df["sufficiency_approx"]) / (
+    df["comprehensiveness_approx"] - df["sufficiency_approx"]
+)
 
 df.loc[(df["upper_limit"] - df["lower_limit"]) == 0, "normalized_comprehensiveness"] = 0
 df.loc[(df["upper_limit"] - df["lower_limit"]) == 0, "normalized_sufficiency"] = 0
+df.loc[(df["comprehensiveness_approx"] - df["sufficiency_approx"]) == 0, "approx_normalized_comprehensiveness"] = 0
+df.loc[(df["comprehensiveness_approx"] - df["sufficiency_approx"]) == 0, "approx_normalized_sufficiency"] = 0
 
 df = df[df["prob"] > 0.5]
 df["model_norm_comprehensiveness"] = df["comprehensiveness"] / df["prob"]
@@ -75,14 +92,14 @@ for metric in ["comprehensiveness", "sufficiency"]:
         .agg(
             comprehensiveness_mean=("comprehensiveness", "mean"),
             normalized_comprehensiveness_mean=("normalized_comprehensiveness", "mean"),
+            approximation_comprehensiveness_mean=("approx_normalized_comprehensiveness", "mean"),
             model_norm_comprehensiveness_mean=("model_norm_comprehensiveness", "mean"),
             sufficiency_mean=("sufficiency", "mean"),
             normalized_sufficiency_mean=("normalized_sufficiency", "mean"),
+            approximation_sufficiency_mean=("approx_normalized_sufficiency", "mean"),
         )
         .reset_index()
     )
-    # delete when we have approximation results
-    results[f"approximation_{metric}_mean"] = results[f"normalized_{metric}_mean"]
 
     results["Combination"] = results["model"] + " + " + results["explanation_method"]
     results["Original"] = results[f"{metric}_mean"].rank(ascending=ascending)
