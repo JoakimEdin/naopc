@@ -17,8 +17,7 @@ from utils.tokenizer import get_word_idx_to_token_idxs, get_word_map_callable
 from decompx.bert import BertForSequenceClassification
 from decompx.roberta import RobertaForSequenceClassification
 from bound_approximation_methods import (
-    get_comprehensiveness_solver_callable,
-    get_sufficiency_solver_callable,
+    get_aopc_solver_callable,
 )
 
 @torch.no_grad()
@@ -46,8 +45,7 @@ def main(
         return
 
 
-    get_sufficiency_solver =  get_sufficiency_solver_callable
-    get_comprehensiveness_solver = get_comprehensiveness_solver_callable
+    get_aopc_solver =  get_aopc_solver_callable
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
@@ -109,17 +107,10 @@ def main(
     preprocessing_list = []
     explanation_method = []
     processing_time = []
+    comp_aopcs = []
+    suff_aopcs = []
 
-    sufficiency_solver_callable = get_sufficiency_solver(
-        model,
-        baseline_token_id=mask_token_id,
-        cls_token_id=start_token_id,
-        eos_token_id=end_token_id,
-        word_map_callable=word_map_callable,
-        preprocessing_step=preprocessing_step,
-        beam_size=beam_size
-    )
-    comprehensiveness_solver_callable = get_comprehensiveness_solver(
+    aopc_solver_callable = get_aopc_solver(
         model,
         baseline_token_id=mask_token_id,
         cls_token_id=start_token_id,
@@ -149,18 +140,17 @@ def main(
             attributions = None
 
         start = time.time()
-        sufficiency_attributions_out = (
-            sufficiency_solver_callable(
-                input_ids=input_ids, target_ids=target_label, device=device, attributions=attributions,
-            )
+        comp_suff_output_tuple = aopc_solver_callable(
+            input_ids=input_ids, target_ids=target_label, device=device, attributions=attributions,
+        )
+        comprehensiveness_attributions_out = (
+            comp_suff_output_tuple[0]
             .squeeze()
             .cpu()
             .numpy()
         )
-        comprehensiveness_attributions_out = (
-            comprehensiveness_solver_callable(
-                input_ids=input_ids, target_ids=target_label, device=device, attributions=attributions,
-            )
+        sufficiency_attributions_out = (
+            comp_suff_output_tuple[1]
             .squeeze()
             .cpu()
             .numpy()
@@ -232,6 +222,8 @@ def main(
         preprocessing_list.append(preprocessing_step)
         explanation_method.append(explanation_attributions)
         processing_time.append(total_time)
+        comp_aopcs.append(comp_aopc)
+        suff_aopcs.append(suff_aopc)
 
     df = pd.DataFrame(
         {
@@ -244,6 +236,8 @@ def main(
             "preprocessing": preprocessing_list,
             "explanation_method": explanation_method,
             "processing_time": processing_time,
+            "comprehensivess": comp_aopcs,
+            "sufficiency": suff_aopcs,
         }
     )
     #clamp_string = "clamp" if clamp else "no_clamp"

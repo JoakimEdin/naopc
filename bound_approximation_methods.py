@@ -4,30 +4,18 @@ import torch
 
 from utils.tokenizer import get_word_idx_to_token_idxs
 
-def get_comprehensiveness_solver_callable(
+def get_aopc_solver_callable(
         *args,
         **kwargs,
     ):
     return get_pertubation_solver_callable(
         *args,
         **kwargs,
-        descending=True
-    )
-
-def get_sufficiency_solver_callable(
-        *args,
-        **kwargs,
-    ):
-    return get_pertubation_solver_callable(
-        *args,
-        **kwargs,
-        descending=False
     )
 
 @torch.no_grad()
 def get_pertubation_solver_callable(
     model: torch.nn.Module | Callable,
-    descending: bool,
     baseline_token_id: int = 1,
     cls_token_id: int = 0,
     eos_token_id: int = 2,
@@ -39,7 +27,6 @@ def get_pertubation_solver_callable(
     greedy_initialisation: bool = False,
     is_linear_regression: bool = False,
     word_map_callable: Optional[Callable] = None,
-    clamp_unmasked: bool = False,
     **kwargs,
 ):
 
@@ -147,12 +134,14 @@ def get_pertubation_solver_callable(
         return removals, removals_deltas
     
     class Explanation:
-        def __init__(self, feature_importances, remaining_features, previous_score, cumulative_score, non_cumulative_score):
+        def __init__(self, feature_importances, remaining_features, previous_score, cumulative_score, non_cumulative_score, descending, complete):
             self.feature_importances = feature_importances
             self.remaining_features = remaining_features
             self.previous_score = previous_score
             self.cumulative_score = cumulative_score
             self.non_cumulative_score = non_cumulative_score
+            self.descending = descending
+            self.complete = complete
 
 
     def mask_input(x, value_indices, word_map=None):
@@ -213,7 +202,8 @@ def get_pertubation_solver_callable(
     token_truncate_function = greedy_token_truncate_linear_regression if is_linear_regression else greedy_token_truncate
 
 
-    def suggest_new_feature_importance(explanation: Explanation, feature_index: int, new_importance: int):
+    def suggest_new_feature_importance(explanation: Explanation, feature_index: int):
+        new_importance = len(explanation.remaining_features) - 1 if explanation.descending else len(explanation.feature_importances)
         new_feature_importances = explanation.feature_importances.copy()
         new_feature_importances[feature_index] = new_importance
         new_remaining_features = explanation.remaining_features.copy()
@@ -223,17 +213,20 @@ def get_pertubation_solver_callable(
             remaining_features=new_remaining_features,
             previous_score=explanation.cumulative_score,
             cumulative_score=None,
-            non_cumulative_score=0
+            non_cumulative_score=0,
+            descending=explanation.descending,
+            complete=False,
         )
 
 
-    def extend_explanation(explanation: Explanation, descending: bool):
+    def extend_explanation(explanation: Explanation):
         # For an explanation, we propose N new explanations where N is the number of remaining features
         # For each new explanation, we propose that the new feature importance is the current iteration,
         # such that for any new feature, their importance decreases or increases by 1 each iteration
-        current_importance = len(explanation.remaining_features) - 1 if descending else len(explanation.feature_importances)
+        if explanation.complete:
+            return [explanation]
         new_explanations = [
-            suggest_new_feature_importance(explanation, feature_index, current_importance)
+            suggest_new_feature_importance(explanation, feature_index)
             for feature_index in explanation.remaining_features
         ]
         return new_explanations
@@ -244,7 +237,9 @@ def get_pertubation_solver_callable(
 
 
     def score_explanations(full_input_val: float, input_ids: torch.Tensor, explanations: list[Explanation], target_ids: torch.Tensor, device: str | torch.device, mask_fn: Callable = mask_input, word_map: dict[int, list[int]] = None, baseline: bool = False):
-        model_pass_combinations = list(set(get_key_from_importances(explanation.feature_importances) for explanation in explanations))
+        complete_explanations = [explanation for explanation in explanations if explanation.complete]
+        incomplete_explanations = [explanation for explanation in explanations if not explanation.complete]
+        model_pass_combinations = list(set(get_key_from_importances(explanation.feature_importances) for explanation in incomplete_explanations))
         combination_to_score = {}
         model_inputs = torch.cat([mask_fn(input_ids, combination, word_map) for combination in model_pass_combinations], dim=0)
         preds = prediction_function(model_inputs, target_ids, device)
@@ -260,10 +255,12 @@ def get_pertubation_solver_callable(
                 remaining_features=explanation.remaining_features.copy(),
                 non_cumulative_score=explanation.cumulative_score,
                 cumulative_score=explanation.previous_score + combination_to_score[key],
-                previous_score=explanation.previous_score
+                previous_score=explanation.previous_score,
+                descending=explanation.descending,
+                complete=len(explanation.remaining_features) == 0
             )
             new_explanations.append(new_explanation)
-        return new_explanations
+        return new_explanations + complete_explanations
     
     def truncate_to_feature_options(new_explanations: list[Explanation], initial_explanations: dict, n_top_features: int, n_random_features: int):
 
@@ -302,7 +299,7 @@ def get_pertubation_solver_callable(
 
         
         return truncated_explanations
-    
+
     def approx_pertubation_solver_callable(
         input_ids: torch.Tensor,
         target_ids: torch.Tensor,
@@ -329,129 +326,101 @@ def get_pertubation_solver_callable(
             ATTRIBUTIONS_THRESHOLD = 0.05
             weak_features = []
             for i, attr in enumerate(attributions[1:-1], start=1):
-                if abs(attr) < ATTRIBUTIONS_THRESHOLD:
+                #if abs(attr) < ATTRIBUTIONS_THRESHOLD:
+                if attr < ATTRIBUTIONS_THRESHOLD:
                     weak_features.append((i, attr))
-            weak_feature_importances = sorted(weak_features, key=lambda x: x[1], reverse=not descending)
-            weak_feature_importances = {feature: -i for i, (feature, _) in enumerate(weak_feature_importances, start=1)}
+            weak_feature_importances_descending = sorted(weak_features, key=lambda x: x[1], reverse=False)
+            weak_feature_importances_descending = {feature: -i for i, (feature, _) in enumerate(weak_feature_importances_descending, start=1)}
+            weak_feature_importances_ascending = sorted(weak_features, key=lambda x: x[1], reverse=True)
+            weak_feature_importances_ascending = {feature: -i for i, (feature, _) in enumerate(weak_feature_importances_ascending, start=1)}
             weak_features = set([x[0] for x in weak_features])
-            
-        elif preprocessing_step == "interactions":
-            baseline_input = input_ids.clone()
-            baseline_input[0, 1:-1] = baseline_token_id
-            baseline_input_score = prediction_function(baseline_input, target_ids, device)
 
-            initial_explanation = Explanation(
-                    feature_importances={},
-                    remaining_features=token_range.tolist(),
-                    previous_score=0,
-                    cumulative_score=0,
-                    non_cumulative_score=0
-                )
-            
-            explanations_to_score = extend_explanation(initial_explanation, descending=descending)
-            masked_scored_explanations = score_explanations(full_input_score, input_ids, explanations_to_score, target_ids, device, word_map=word_map)
-            unmasked_scored_explanations = score_explanations(baseline_input_score, input_ids, explanations_to_score, target_ids, device, word_map=word_map, mask_fn=unmask_input, baseline=True)
-
-            unmask_strength_threshold = 0.05
-            mask_strength_threshold = 0.1
-
-            strong_features = set()
-            weak_features = set()
-            interacting_features = set()
-
-            for i in range(len(masked_scored_explanations)):
-                explained_feature = list(masked_scored_explanations[i].feature_importances.keys())[0]
-                unmasked_score = max((unmasked_scored_explanations[i].cumulative_score, 0)) if clamp_unmasked else unmasked_scored_explanations[i].cumulative_score
-                if abs(masked_scored_explanations[i].cumulative_score - unmasked_score) > unmask_strength_threshold:
-                    interacting_features.add(explained_feature)
-                elif unmasked_scored_explanations[i].cumulative_score > mask_strength_threshold:
-                    strong_features.add(explained_feature)
-                else:
-                    weak_features.add(explained_feature)
-
-            individual_feature_explanations = [
-                (list(e.feature_importances.keys())[0], e.cumulative_score) for e in masked_scored_explanations
-            ]
-            weak_feature_explanations = [
-                (feature, score) for feature, score in individual_feature_explanations if feature in weak_features
-            ]
-            weak_feature_explanations = sorted(weak_feature_explanations, key=lambda x: x[1], reverse=not descending)
-            weak_feature_importances = {feature: -i for i, (feature, _) in enumerate(weak_feature_explanations, start=1)}
-        
-        if preprocessing_step in {"interactions", "feature_attributions"}:
-
-            if descending and preprocessing_step == "interactions":
-                beam = [
-                    e for e in masked_scored_explanations if list(e.feature_importances.keys())[0] not in weak_features
-                ]
-                for e in beam:
-                    e.remaining_features = list(set(token_range.tolist()) - weak_features)
-            elif descending and preprocessing_step == "feature_attributions":
-                explanation = Explanation(
+            descending_explanation = Explanation(
                         feature_importances={},
                         remaining_features=list(set(token_range.tolist()) - weak_features),
                         previous_score=0,
                         non_cumulative_score=0,
                         cumulative_score=0,
+                        complete=False,
+                        descending=True,
                     )
-                explanation = extend_explanation(explanation, descending)
-                beam = score_explanations(full_input_score, input_ids, explanation, target_ids, device, word_map=word_map)
+            descending_beam = score_explanations(full_input_score, input_ids, [descending_explanation], target_ids, device, word_map=word_map)
 
-            else:
-                initial_state = Explanation(
-                        feature_importances=weak_feature_importances,
+            ascending_explanation = Explanation(
+                        feature_importances=weak_feature_importances_ascending,
                         remaining_features=list(set(token_range.tolist()) - weak_features),
                         previous_score=0,
                         non_cumulative_score=0,
                         cumulative_score=0,
+                        complete=False,
+                        descending=False,
                     )
-                beam = score_explanations(full_input_score, input_ids, [initial_state], target_ids, device, word_map=word_map)
+            ascending_beam = score_explanations(full_input_score, input_ids, [ascending_explanation], target_ids, device, word_map=word_map)
                 
         
         elif preprocessing_step is None:
-            beam = [
+            descending_beam = [
                 Explanation(
                     feature_importances={},
                     remaining_features=token_range.tolist(),
                     previous_score=0,
                     cumulative_score=0,
-                    non_cumulative_score=0
+                    non_cumulative_score=0,
+                    complete=False,
+                    descending=True,
+                )
+            ]
+            ascending_beam = [
+                Explanation(
+                    feature_importances={},
+                    remaining_features=token_range.tolist(),
+                    previous_score=0,
+                    cumulative_score=0,
+                    non_cumulative_score=0,
+                    complete=False,
+                    descending=False,
                 )
             ]
 
-        num_remaining_features = len(beam[0].remaining_features)
+        max_necessary_passes = len(ascending_beam[0].remaining_features)
  
-        for _ in range(num_remaining_features):
+        for _ in range(max_necessary_passes):
+            total_beam = descending_beam + ascending_beam
             explanations_to_score = []
-            for explanation in beam:
-                explanations_to_score += extend_explanation(explanation, descending)
+            for explanation in total_beam:
+                explanations_to_score += extend_explanation(explanation)
             new_proposed_explanations = score_explanations(full_input_score, input_ids, explanations_to_score, target_ids, device, word_map=word_map)
-            new_proposed_explanations = sorted(new_proposed_explanations, key=lambda x: x.cumulative_score, reverse=descending)
+            ascending_split_index = next(i for i, e in enumerate(new_proposed_explanations) if e.descending == False)
+            descending_beam, ascending_beam = new_proposed_explanations[:ascending_split_index], new_proposed_explanations[ascending_split_index:]
+            if not all(e.descending == True for e in descending_beam):
+                print("WHAT")
+            if not all(e.descending == False for e in ascending_beam):
+                print("WHAT")
+            new_proposed_descending_explanations = sorted(descending_beam, key=lambda x: x.cumulative_score, reverse=True)
+            new_proposed_ascending_explanations = sorted(ascending_beam, key=lambda x: x.cumulative_score, reverse=False)
+            descending_beam = new_proposed_descending_explanations[:beam_size]
+            ascending_beam = new_proposed_ascending_explanations[:beam_size]
 
-            # Pick the top N explanations and re-do the search
-            beam = new_proposed_explanations[:beam_size]
+            total_beam = descending_beam + ascending_beam
 
-        # Edge case - sometimes, when the examples are only 2 tokens long, they'll contain only weak features
-        if len(beam) > 0:
-            best_explanation = beam[0]
-        else:
-            best_explanation = Explanation(
-                feature_importances=weak_feature_importances,
-                remaining_features=[],
-                previous_score=0,
-                cumulative_score=0,
-                non_cumulative_score=0
-            )
+        best_descending_explanation = descending_beam[0]
+        best_ascending_explanation = ascending_beam[0]
+
+
         # If we are calculating comprehensiveness we add the weak features to the explanation
         # at the end. If we are calculating sufficiency, they were already prepended
-        if preprocessing_step in  {"interactions", "feature_attributions"} and descending:
-            best_explanation.feature_importances.update(weak_feature_importances)
+        if preprocessing_step:
+            best_descending_explanation.feature_importances.update(weak_feature_importances_descending)
             
-        attributions = torch.zeros(has_cls + len(best_explanation.feature_importances) + has_eos)
-        for feature_index, importance in best_explanation.feature_importances.items():
-            attributions[feature_index] = importance
+        descending_attributions = torch.zeros(has_cls + len(best_descending_explanation.feature_importances) + has_eos)
+        for feature_index, importance in best_descending_explanation.feature_importances.items():
+            descending_attributions[feature_index] = importance
 
-        return attributions
+        ascending_attributions = torch.zeros(has_cls + len(best_ascending_explanation.feature_importances) + has_eos)
+        for feature_index, importance in best_ascending_explanation.feature_importances.items():
+            ascending_attributions[feature_index] = importance
+
+        return descending_attributions, ascending_attributions
         # Convert word attributions to token attributions
         # token_attributions = torch.zeros(input_ids.shape[1])
         # if word_map:
