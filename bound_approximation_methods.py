@@ -329,6 +329,8 @@ def get_pertubation_solver_callable(
                 #if abs(attr) < ATTRIBUTIONS_THRESHOLD:
                 if attr < ATTRIBUTIONS_THRESHOLD:
                     weak_features.append((i, attr))
+
+            # Descending/ascending is inverted now since we want the lowest impact to the respective scores
             weak_feature_importances_descending = sorted(weak_features, key=lambda x: x[1], reverse=False)
             weak_feature_importances_descending = {feature: -i for i, (feature, _) in enumerate(weak_feature_importances_descending, start=1)}
             weak_feature_importances_ascending = sorted(weak_features, key=lambda x: x[1], reverse=True)
@@ -392,10 +394,6 @@ def get_pertubation_solver_callable(
             new_proposed_explanations = score_explanations(full_input_score, input_ids, explanations_to_score, target_ids, device, word_map=word_map)
             ascending_split_index = next(i for i, e in enumerate(new_proposed_explanations) if e.descending == False)
             descending_beam, ascending_beam = new_proposed_explanations[:ascending_split_index], new_proposed_explanations[ascending_split_index:]
-            if not all(e.descending == True for e in descending_beam):
-                print("WHAT")
-            if not all(e.descending == False for e in ascending_beam):
-                print("WHAT")
             new_proposed_descending_explanations = sorted(descending_beam, key=lambda x: x.cumulative_score, reverse=True)
             new_proposed_ascending_explanations = sorted(ascending_beam, key=lambda x: x.cumulative_score, reverse=False)
             descending_beam = new_proposed_descending_explanations[:beam_size]
