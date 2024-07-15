@@ -236,7 +236,7 @@ def main(
             "preprocessing": preprocessing_list,
             "explanation_method": explanation_method,
             "processing_time": processing_time,
-            "comprehensivess": comp_aopcs,
+            "comprehensiveness": comp_aopcs,
             "sufficiency": suff_aopcs,
         }
     )
