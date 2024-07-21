@@ -22,7 +22,6 @@ def get_pertubation_solver_callable(
     beam_size: int = 50,
     batch_size: int = 1024,
     preprocessing_step: Optional[str] = None,
-    is_linear_regression: bool = False,
     word_map_callable: Optional[Callable] = None,
     **kwargs,
 ):
