@@ -109,6 +109,7 @@ def main(
     processing_time = []
     comp_aopcs = []
     suff_aopcs = []
+    word_lengths = []
 
     aopc_solver_callable = get_aopc_solver(
         model,
@@ -121,11 +122,15 @@ def main(
     )
 
     i = 0
+    stop = 100
     for example in track(
         dataset, 
         description=f"Approximating bounds...", 
-        total=len(dataset)
+        total=stop
     ):
+        i += 1
+        if i == stop:
+            break
         input_ids = (
             torch.tensor(example["input_ids"]).to(device).unsqueeze(0)
         )
@@ -211,6 +216,8 @@ def main(
             upper_delta = math.nan
             lower_delta = math.nan
 
+        word_length = len(input_ids[0])
+
         id_list.append(example["id"])
         word_maps.append(word_map.numpy())
         upper_word_attribution_list.append(comprehensiveness_attributions.numpy())
@@ -222,6 +229,7 @@ def main(
         processing_time.append(total_time)
         comp_aopcs.append(comp_aopc)
         suff_aopcs.append(suff_aopc)
+        word_lengths.append(word_length)
  
     df = pd.DataFrame(
         {
@@ -236,11 +244,12 @@ def main(
             "processing_time": processing_time,
             "comprehensiveness": comp_aopcs,
             "sufficiency": suff_aopcs,
+            "word_length": word_lengths
         }
     )
     preprocesing_string = "no_preprocessing" if preprocessing_step is None else preprocessing_step + "_" + explanation_attributions
     df.to_parquet(
-        f"results/aopc_limits_approx/{dataset_name}_{dataset_length}_{preprocesing_string}_beam_size_{str(beam_size)}_{model_name.split('/')[1]}.parquet"
+        f"results/aopc_limits_approx_increasing_beams/{dataset_name}_{dataset_length}_{preprocesing_string}_beam_size_{str(beam_size)}_{model_name.split('/')[1]}.parquet"
     )
 
 if __name__ == "__main__":
