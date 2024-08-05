@@ -15,8 +15,6 @@ from utils.tokenizer import get_word_map_callable
 from decompx.bert import BertForSequenceClassification
 from decompx.roberta import RobertaForSequenceClassification
 from feature_attribution_methods import (
-    get_comprehensiveness_solver_callable,
-    get_sufficiency_solver_callable,
     get_attention_callable,
     get_attingrad_callable,
     get_deeplift_callable,
