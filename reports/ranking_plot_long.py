@@ -36,7 +36,11 @@ explainer_dict = {
 }
 explainers_to_include = ["DecompX", "LIME", "IG", "Attention"]
 dataframe_list = []
-for dataset_name in datasets:
+# Plot settings
+plt.rcParams["ytick.major.pad"] = "2"
+fig, ax = plt.subplots(2, 3, figsize=(20, 18), sharex="all", sharey="all")
+
+for col_idx, dataset_name in enumerate(datasets):
     for model_name in model_names:
         results_df = pd.read_csv(
             f"results/aopc_scores_{length}/{dataset_name}_{model_name.split('/')[1]}.csv"
@@ -54,21 +58,29 @@ for dataset_name in datasets:
         dataframe_list.append(results_df)
     df = pd.concat(dataframe_list)
 
-    df["approx_normalized_comprehensiveness"] = (df["comprehensiveness"] - df["sufficiency_approx"]) / (
-        df["comprehensiveness_approx"] - df["sufficiency_approx"]
-    )
-    df["approx_normalized_sufficiency"] = (df["sufficiency"] - df["sufficiency_approx"]) / (
-        df["comprehensiveness_approx"] - df["sufficiency_approx"]
-    )
+    df["approx_normalized_comprehensiveness"] = (
+        df["comprehensiveness"] - df["sufficiency_approx"]
+    ) / (df["comprehensiveness_approx"] - df["sufficiency_approx"])
+    df["approx_normalized_sufficiency"] = (
+        df["sufficiency"] - df["sufficiency_approx"]
+    ) / (df["comprehensiveness_approx"] - df["sufficiency_approx"])
 
-    df.loc[(df["comprehensiveness_approx"] - df["sufficiency_approx"]) == 0, "approx_normalized_comprehensiveness"] = 0
-    df.loc[(df["comprehensiveness_approx"] - df["sufficiency_approx"]) == 0, "approx_normalized_sufficiency"] = 0
+    df.loc[
+        (df["comprehensiveness_approx"] - df["sufficiency_approx"]) == 0,
+        "approx_normalized_comprehensiveness",
+    ] = 0
+    df.loc[
+        (df["comprehensiveness_approx"] - df["sufficiency_approx"]) == 0,
+        "approx_normalized_sufficiency",
+    ] = 0
 
     df = df[df["prob"] > 0.5]
     df["model_norm_comprehensiveness"] = df["comprehensiveness"] / df["prob"]
-    df["explanation_method"] = df["explanation_method"].apply(lambda x: explainer_dict[x])
+    df["explanation_method"] = df["explanation_method"].apply(
+        lambda x: explainer_dict[x]
+    )
     df = df[df["explanation_method"].isin(explainers_to_include)]
-    for metric in ["comprehensiveness", "sufficiency"]:
+    for row_idx, metric in enumerate(["comprehensiveness", "sufficiency"]):
         if metric == "comprehensiveness":
             ascending = False
         else:
@@ -78,19 +90,30 @@ for dataset_name in datasets:
             df.groupby(["explanation_method", "model"])
             .agg(
                 comprehensiveness_mean=("comprehensiveness", "mean"),
-                approximation_comprehensiveness_mean=("approx_normalized_comprehensiveness", "mean"),
-                model_norm_comprehensiveness_mean=("model_norm_comprehensiveness", "mean"),
+                approximation_comprehensiveness_mean=(
+                    "approx_normalized_comprehensiveness",
+                    "mean",
+                ),
+                model_norm_comprehensiveness_mean=(
+                    "model_norm_comprehensiveness",
+                    "mean",
+                ),
                 sufficiency_mean=("sufficiency", "mean"),
-                approximation_sufficiency_mean=("approx_normalized_sufficiency", "mean"),
+                approximation_sufficiency_mean=(
+                    "approx_normalized_sufficiency",
+                    "mean",
+                ),
             )
             .reset_index()
         )
 
-        results["Combination"] = results["model"] + " + " + results["explanation_method"]
-        results["Original"] = results[f"{metric}_mean"].rank(ascending=ascending)
-        results["Approximation algorithm"] = results[f"approximation_{metric}_mean"].rank(
-            ascending=ascending
+        results["Combination"] = (
+            results["model"] + " + " + results["explanation_method"]
         )
+        results["Original"] = results[f"{metric}_mean"].rank(ascending=ascending)
+        results["Approximation algorithm"] = results[
+            f"approximation_{metric}_mean"
+        ].rank(ascending=ascending)
         results = results[
             [
                 "explanation_method",
@@ -101,10 +124,6 @@ for dataset_name in datasets:
                 "model",
             ]
         ]
-
-        # Plot settings
-        plt.rcParams["ytick.major.pad"] = "0"
-        fig, ax = plt.subplots(figsize=(10, 10))
 
         # Define the positions and colors of the columns
         positions = ["Original", "Approximation algorithm"]
@@ -134,17 +153,17 @@ for dataset_name in datasets:
             model_data = results[results["model"] == model]
             for i in range(model_data.shape[0]):
                 if i == 0:
-                    ax.plot(
+                    ax[row_idx, col_idx].plot(
                         positions,
                         model_data.iloc[i, 1:3],
                         marker="o",
                         linestyle="-",
                         color=color,
-                        linewidth=3,
+                        linewidth=4,
                         label=model,
                     )
                 else:
-                    ax.plot(
+                    ax[row_idx, col_idx].plot(
                         positions,
                         model_data.iloc[i, 1:3],
                         marker="o",
@@ -154,38 +173,56 @@ for dataset_name in datasets:
                     )
 
         # Customize the plot appearance
-        ax.set_xticks(positions)
-        ax.invert_yaxis()
-        # ax.grid(True, linestyle='--', alpha=0.6)
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        ax.spines["bottom"].set_visible(False)
-        ax.spines["left"].set_visible(False)
+        ax[row_idx, col_idx].set_xticks(positions)
 
-        ax.set_yticks([1, 5, 10, 15, 20])
-        ax.set_yticklabels(
+        # ax[row_idx, col_idx].grid(True, linestyle='--', alpha=0.6)
+        ax[row_idx, col_idx].spines["top"].set_visible(False)
+        ax[row_idx, col_idx].spines["right"].set_visible(False)
+        ax[row_idx, col_idx].spines["bottom"].set_visible(False)
+        ax[row_idx, col_idx].spines["left"].set_visible(False)
+
+        ax[row_idx, col_idx].set_yticks([1, 5, 10, 15, 20])
+        ax[row_idx, col_idx].set_yticklabels(
             ["1st", "5th", "10th", "15th", "20th"], fontsize=16, fontweight="semibold"
         )
-        ax.tick_params(left=False)
-        ax.tick_params(top=False, labeltop=True, bottom=False, labelbottom=False)
-        ax.set_xticklabels(
-            ["No normalization", "Norm$_{\\text{approx}}$"],
+        ax[row_idx, col_idx].set_xticklabels(
+            ["AOPC", "NAOPC$_{\\text{beam}}$"],
             fontsize=18,
             fontweight="bold",
         )
+
+        # ax[row_idx, col_idx].tick_params(
+        #     top=False, labeltop=True, bottom=False, labelbottom=False, left=False
+        # )
+
+        # do not show xtix for bottom row
+
+        # Set the title
+        if row_idx == 0:
+            dataset_name = (
+                dataset_name.replace("imdb", "IMDB$_{\\text{long}}$")
+                .replace("sst2", "SST-2$_{\\text{long}}$")
+                .replace("yelp", "Yelp$_{\\text{long}}$")
+            )
+            ax[row_idx, col_idx].set_title(
+                f"{dataset_name}",
+                fontsize=25,
+                fontweight="bold",
+            )
+            # ax[row_idx, col_idx].tick_params(labelbottom=True)
 
         # # Custom legend
         # legend_elements = [Patch(facecolor='grey', edgecolor='grey', label='Other countries')]
         # for combination, color in zip(highlight_combinations, highlight_colors):
         #     legend_elements.append(Patch(facecolor=color, edgecolor=color, label=combination))
 
-        # ax.legend(handles=legend_elements, loc='upper right', fontsize=12)
+        # ax[row_idx, col_idx].legend(handles=legend_elements, loc='upper right', fontsize=12)
 
         # Annotate with name specific points (optional)
         for i in range(results.shape[0]):
             rank = results.iloc[i, 2] + 0.1
-            pos = 1.05
-            ax.text(
+            pos = 1.08
+            ax[row_idx, col_idx].text(
                 pos,
                 rank,
                 f"{results.iloc[i, 0]}",
@@ -199,7 +236,7 @@ for dataset_name in datasets:
                 rank = results.iloc[i, column + 1] - 0.2
                 pos = column
                 score = results.iloc[i, column + 3]
-                ax.text(
+                ax[row_idx, col_idx].text(
                     pos,
                     rank,
                     f"{score:.2f}",
@@ -209,16 +246,27 @@ for dataset_name in datasets:
                 )
 
         # legends
-        ax.legend(
-            loc="upper center",
-            bbox_to_anchor=(0.5, 0),
-            ncol=2,
-            fontsize=20,
-            frameon=False,
-        )
 
         # Display the plot
-        plt.tight_layout()
-        plt.show()
-        plt.savefig(f"figures/{dataset_name}_ranking_plot_long_{metric}.pdf", bbox_inches="tight", format="pdf")
-        plt.clf()
+
+ax[0, 0].set_ylabel("Comprehensiveness", fontsize=25, fontweight="bold", labelpad=10)
+ax[1, 0].set_ylabel("Sufficiency", fontsize=25, fontweight="bold", labelpad=10)
+plt.gca().invert_yaxis()
+
+# Custom legend
+handles, labels = ax[0, 0].get_legend_handles_labels()
+leg = fig.legend(
+    handles,
+    labels,
+    loc="lower center",
+    bbox_to_anchor=(0.5, -0.04),
+    ncol=6,
+    fontsize=22,
+    frameon=False,
+)
+for line in leg.get_lines():
+    line.set_linewidth(20.0)
+
+plt.tight_layout()
+plt.show()
+plt.savefig("figures/ranking_plot_long.pdf", bbox_inches="tight", format="pdf")

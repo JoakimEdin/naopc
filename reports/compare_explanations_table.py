@@ -42,8 +42,8 @@ for dataset_name in dataset_names:
         aopc_scores_df["model"] = model_dict[model_name]
         
 
-        aopc_limits_df = pd.read_csv(
-            f"results/aopc_limits_exact/{dataset_name}_{model_name.split('/')[1]}.csv"
+        aopc_limits_df = pd.read_parquet(
+            f"results/aopc_limits_exact/{dataset_name}_{model_name.split('/')[1]}.parquet"
         )
         aopc_scores_df = aopc_scores_df.merge(aopc_limits_df, on="id")
         

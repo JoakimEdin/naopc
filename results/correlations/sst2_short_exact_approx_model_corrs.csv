@@ -1,7 +1,0 @@
-model,model,approx_normalized_comprehensiveness,approx_normalized_sufficiency
-BERT$_{\text{IMDB}}$,BERT$_{\text{IMDB}}$,0.9770489819607072,0.9689279860936021
-BERT$_{\text{SST2}}$,BERT$_{\text{SST2}}$,0.9843939616933345,0.9903836128227511
-BERT$_{\text{Yelp}}$,BERT$_{\text{Yelp}}$,0.9991937511456314,0.9938500777865673
-RoBERTa$_{\text{IMDB}}$,RoBERTa$_{\text{IMDB}}$,0.9812876739019425,0.9956110089457765
-RoBERTa$_{\text{SST2}}$,RoBERTa$_{\text{SST2}}$,0.980680898315167,0.9915956460171969
-RoBERTa$_{\text{Yelp}}$,RoBERTa$_{\text{Yelp}}$,0.9989904786054289,0.9983640044071497

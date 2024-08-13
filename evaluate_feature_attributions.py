@@ -6,6 +6,7 @@ import datasets
 import pandas as pd
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
 from utils.tokenizer import convert_word_map_to_dict
 
 BATCH_SIZE = 1024
@@ -30,10 +31,12 @@ for model_name in model_names:
     )
 
 for dataset_name in dataset_names:
-    for length in ["short", "long"]:
+    for length in ["short"]:
+        if (dataset_name == "imdb") and (length == "short"):
+            continue
         dataset = datasets.load_dataset(
-        "csv", data_files=f"{dataset_name}_test_short.csv", split="train"
-    )
+            "csv", data_files=f"data/{dataset_name}_test_{length}.csv", split="train"
+        )
         dataset = dataset.map(
             lambda x: {
                 f"input_ids_{model_name}": tokenizer(x["text"])["input_ids"]
@@ -68,14 +71,19 @@ for dataset_name in dataset_names:
             with torch.no_grad():
                 for explanation_method in explanation_methods:
                     for example in dataset:
-                        
                         input_ids = (
-                            torch.tensor(example[input_id_column_name]).to(device).unsqueeze(0)
+                            torch.tensor(example[input_id_column_name])
+                            .to(device)
+                            .unsqueeze(0)
                         )
                         full_output = (
-                            model(input_ids).logits.softmax(1).squeeze(0).cpu()[1].item()
+                            model(input_ids)
+                            .logits.softmax(1)
+                            .squeeze(0)
+                            .cpu()[1]
+                            .item()
                         )
-                        
+
                         attributions_for_eample = feature_attributions_df[
                             (feature_attributions_df["id"] == example["id"])
                             & (
@@ -84,16 +92,26 @@ for dataset_name in dataset_names:
                             )
                         ]
 
-                        token_attributions = attributions_for_eample["token_attributions"].values[0]
-                        word_attributions = attributions_for_eample["word_attributions"].values[0]
+                        token_attributions = attributions_for_eample[
+                            "token_attributions"
+                        ].values[0]
+                        word_attributions = attributions_for_eample[
+                            "word_attributions"
+                        ].values[0]
                         word_map = attributions_for_eample["word_map"].values[0]
+
+                        if 1 not in word_map:
+                            word_map = word_map - 1
+                            word_map[0] = 0
 
                         word_map_dict = convert_word_map_to_dict(word_map)
 
                         word_attributions = torch.from_numpy(word_attributions)[
                             1:-1
                         ]  # ignore cls and sep token
-                        word_ranking = torch.argsort(word_attributions, descending=True) + 1
+                        word_ranking = (
+                            torch.argsort(word_attributions, descending=True) + 1
+                        )
                         permutation_input_ids = input_ids.clone()
 
                         comprehensiveness = 0
@@ -144,4 +162,6 @@ for dataset_name in dataset_names:
                     "prob": prob_list,
                 }
             )
-            df.to_csv(f"results/aopc_scores_{length}/{dataset_name}_{model_name.split('/')[1]}.csv")
+            df.to_csv(
+                f"results/aopc_scores_{length}/{dataset_name}_{model_name.split('/')[1]}.csv"
+            )

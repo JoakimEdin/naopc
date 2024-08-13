@@ -4,11 +4,13 @@ from matplotlib import pyplot as plt
 
 
 
-imdb = load_dataset("csv", data_files="data/imdb_test.csv", split="train")
-sst2 = load_dataset("csv", data_files="data/sst2_test.csv", split="train")
-yelp = load_dataset("csv", data_files="data/yelp_test.csv", split="train")
+imdb = load_dataset("csv", data_files="data/imdb_test_long.csv", split="train")
+sst2 = load_dataset("csv", data_files="data/sst2_test_long.csv", split="train")
+yelp = load_dataset("csv", data_files="data/yelp_test_long.csv", split="train")
 
-
+for i, (dataset, name) in enumerate(zip([sst2, yelp, imdb], ["SST-2", "Yelp", "IMDB"])):
+    lengths = dataset.with_format("pandas")["text"].str.split().apply(len)
+    print(name, lengths.describe())
 
 
 
@@ -23,7 +25,7 @@ for i, (dataset, name) in enumerate(zip([sst2, imdb, yelp], ["SST-2", "IMDB", "Y
     axs[i].set_xlabel("Number of tokens")
     axs[i].set_ylabel("Frequency")
 plt.tight_layout()
-plt.savefig("results/length_histograms.png", format="png")
+plt.savefig("figures/length_histograms.png", format="png")
 
 sst2 = load_dataset("csv", data_files="data/sst2_test_short.csv", split="train")
 yelp = load_dataset("csv", data_files="data/yelp_test_short.csv", split="train")

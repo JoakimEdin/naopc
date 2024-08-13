@@ -6,8 +6,8 @@ import seaborn as sns
 
 dataset_names = ["yelp", "sst2"]
 model_names = [
-    "textattack/bert-base-uncased-SST-2",
-    "textattack/roberta-base-SST-2",
+    # "textattack/bert-base-uncased-SST-2",
+    # "textattack/roberta-base-SST-2",
     "textattack/bert-base-uncased-yelp-polarity",
     "VictorSanh/roberta-base-finetuned-yelp-polarity",
     "textattack/bert-base-uncased-imdb",
@@ -25,17 +25,21 @@ model_dict = {
 for dataset_name in dataset_names:
     dataframes = []
     for model_name in model_names:
-        file_path = Path(f"results/aopc_limits_exact/{dataset_name}_{model_name.split('/')[1]}.parquet")
+        file_path = Path(
+            f"results/aopc_limits_exact/{dataset_name}_{model_name.split('/')[1]}.parquet"
+        )
         if not file_path.exists():
             continue
         temp_df = pd.read_parquet(file_path)
         temp_df["model"] = model_dict[model_name]
         dataframes.append(temp_df)
 
-
     df = pd.concat(dataframes)
-    sns.set_theme(style="whitegrid", context="paper", palette="colorblind", font_scale=1.5)
-    g = sns.histplot(data=df, x="upper_limit", hue="model", kde=True, bins=20)
+    # df = df[df["prob"] > 0.5]
+    sns.set_theme(
+        style="whitegrid", context="paper", palette="colorblind", font_scale=1.5
+    )
+    g = sns.histplot(data=df, x="upper_limit", hue="model", kde=True, bins=30)
     plt.xlabel("AOPC score")
     plt.ylabel("Frequency")
     # no legend title for the model
@@ -50,8 +54,7 @@ for dataset_name in dataset_names:
 
     plt.clf()
 
-
-    g=sns.histplot(data=df, x="lower_limit", hue="model", kde=True, bins=50)
+    g = sns.histplot(data=df, x="lower_limit", hue="model", kde=True, bins=70)
     plt.xlabel("AOPC score")
     plt.ylabel("Frequency")
     plt.xlim(-0.2, 0.5)

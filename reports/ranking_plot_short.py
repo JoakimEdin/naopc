@@ -192,7 +192,7 @@ for dataset_name in dataset_names:
         ax.tick_params(left=False)
         ax.tick_params(top=False, labeltop=True, bottom=False, labelbottom=False)
         ax.set_xticklabels(
-            ["No normalization", "Norm$_{\\text{exact}}$", "Norm$_{\\text{approx}}$"],
+            ["AOPC", "NAOPC$_{\\text{exact}}$", "NAOPC$_{\\text{beam}}$"],
             fontsize=18,
             fontweight="bold",
         )
@@ -232,13 +232,15 @@ for dataset_name in dataset_names:
                 )
 
         # legends
-        ax.legend(
+        leg = ax.legend(
             loc="upper center",
-            bbox_to_anchor=(0.5, 0),
+            bbox_to_anchor=(0.6, 0),
             ncol=3,
             fontsize=20,
             frameon=False,
         )
+        for line in leg.get_lines():
+            line.set_linewidth(18.0)
 
         # Display the plot
         plt.tight_layout()
