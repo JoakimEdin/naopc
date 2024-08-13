@@ -1,13 +1,10 @@
 from pathlib import Path
-
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
 dataset_names = ["yelp", "sst2"]
 model_names = [
-    # "textattack/bert-base-uncased-SST-2",
-    # "textattack/roberta-base-SST-2",
     "textattack/bert-base-uncased-yelp-polarity",
     "VictorSanh/roberta-base-finetuned-yelp-polarity",
     "textattack/bert-base-uncased-imdb",
@@ -22,6 +19,15 @@ model_dict = {
     "textattack/bert-base-uncased-imdb": "BERT$_{\\text{IMDB}}$",
     "textattack/roberta-base-imdb": "RoBERTa$_{\\text{IMDB}}$",
 }
+
+# Updated custom colorblind-friendly palette with more distinguishable colors
+custom_palette = {
+    "BERT$_{\\text{Yelp}}$": "#4daf4a",
+    "RoBERTa$_{\\text{Yelp}}$": "#f781bf",
+    "BERT$_{\\text{IMDB}}$": "#377eb8",
+    "RoBERTa$_{\\text{IMDB}}$": "#ff7f00",
+}
+
 for dataset_name in dataset_names:
     dataframes = []
     for model_name in model_names:
@@ -35,16 +41,13 @@ for dataset_name in dataset_names:
         dataframes.append(temp_df)
 
     df = pd.concat(dataframes)
-    # df = df[df["prob"] > 0.5]
-    sns.set_theme(
-        style="whitegrid", context="paper", palette="colorblind", font_scale=1.5
+    sns.set_theme(style="whitegrid", context="paper", font_scale=1.5)
+    g = sns.histplot(
+        data=df, x="upper_limit", hue="model", kde=True, bins=30, palette=custom_palette
     )
-    g = sns.histplot(data=df, x="upper_limit", hue="model", kde=True, bins=30)
     plt.xlabel("AOPC score")
     plt.ylabel("Frequency")
-    # no legend title for the model
     plt.legend(title=None)
-    # plot vertical line representing the average
     print(df.groupby("model")["upper_limit"].describe())
     print(df.groupby("model")["lower_limit"].describe())
     plt.tight_layout()
@@ -54,7 +57,9 @@ for dataset_name in dataset_names:
 
     plt.clf()
 
-    g = sns.histplot(data=df, x="lower_limit", hue="model", kde=True, bins=70)
+    g = sns.histplot(
+        data=df, x="lower_limit", hue="model", kde=True, bins=70, palette=custom_palette
+    )
     plt.xlabel("AOPC score")
     plt.ylabel("Frequency")
     plt.xlim(-0.2, 0.5)

@@ -109,7 +109,7 @@ for column_idx, dataset in enumerate(datasets):
             tick_labels=beam_sizes,
             showfliers=False,
             patch_artist=True,
-            boxprops=dict(facecolor="#4daf4a"),
+            boxprops=dict(facecolor="#ff7f00"),
         )
         ax.legend(
             [b1["boxes"][0], b2["boxes"][0]],
