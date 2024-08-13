@@ -1,31 +1,24 @@
-import math
-import os
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
-
 import datasets
 import pandas as pd
 import torch
-from transformers import AutoTokenizer
 from rich.progress import track
-
 from transformers import AutoTokenizer
 
-from utils.tokenizer import get_word_map_callable
-from decompx.bert import BertForSequenceClassification
-from decompx.roberta import RobertaForSequenceClassification
-from feature_attribution_methods import (
+from src.feature_attribution_methods.decompx.bert import BertForSequenceClassification
+from src.feature_attribution_methods.decompx.roberta import (
+    RobertaForSequenceClassification,
+)
+from src.feature_attribution_methods.feature_attribution_methods import (
     get_attention_callable,
-    get_attingrad_callable,
-    get_deeplift_callable,
     get_decompx_callable,
+    get_deeplift_callable,
     get_gradient_x_input_callable,
     get_integrated_gradient_callable,
     get_kernelshap_callable,
     get_lime_callable,
     get_occlusion_1_callable,
-    get_random_baseline_callable,
 )
+from src.utils.tokenizer import get_word_map_callable
 
 BATCH_SIZE = 1024
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -42,7 +35,6 @@ model_names = [
 
 explanation_methods = {
     "decompx": get_decompx_callable,
-    "attingrad": get_attingrad_callable,
     "attention": get_attention_callable,
     "gradient_x_input": get_gradient_x_input_callable,
     "deeplift": get_deeplift_callable,
@@ -50,7 +42,6 @@ explanation_methods = {
     "lime": get_lime_callable,
     "kernelshap": get_kernelshap_callable,
     "occlusion_1": get_occlusion_1_callable,
-    "random_baseline": get_random_baseline_callable,
 }
 
 tokenizers = {}
@@ -60,11 +51,12 @@ for model_name in model_names:
 
 for dataset_name in dataset_names:
     for length in ["short", "long"]:
-
         if (dataset_name == "imdb") and (length == "short"):
-            continue # imdb short doesn't exist
+            continue  # imdb short doesn't exist
 
-        dataset = datasets.load_dataset("csv", data_files=f"data/{dataset_name}_test_{length}.csv", split="train")
+        dataset = datasets.load_dataset(
+            "csv", data_files=f"data/{dataset_name}_test_{length}.csv", split="train"
+        )
         dataset = dataset.map(
             lambda x: {
                 f"input_ids_{model_name}": tokenizer(x["text"])["input_ids"]
@@ -113,9 +105,15 @@ for dataset_name in dataset_names:
                     eos_token_id=end_token_id,
                 )
 
-                for example in track(dataset, description=f"Calculating {explanation_name}", total=len(dataset)):
+                for example in track(
+                    dataset,
+                    description=f"Calculating {explanation_name}",
+                    total=len(dataset),
+                ):
                     input_ids = (
-                        torch.tensor(example[input_id_column_name]).to(device).unsqueeze(0)
+                        torch.tensor(example[input_id_column_name])
+                        .to(device)
+                        .unsqueeze(0)
                     )
                     attributions = (
                         explanation_method_callable(
@@ -130,7 +128,7 @@ for dataset_name in dataset_names:
                     word_attributions = torch.zeros((word_map.max() + 1))
                     for idx, feature in enumerate(word_map):
                         word_attributions[feature] += attributions[idx]
-                    
+
                     token_attribution_list.append(attributions)
                     word_attribution_list.append(word_attributions.numpy())
                     id_list.append(example["id"])

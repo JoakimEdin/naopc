@@ -3,7 +3,7 @@ from typing import Callable, Optional
 import captum
 import torch
 
-from decompx.decompx_utils import DecompXConfig
+from src.feature_attribution_methods.decompx.decompx_utils import DecompXConfig
 
 Explainer = Callable[[torch.Tensor, torch.Tensor, str | torch.device], torch.Tensor]
 

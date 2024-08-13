@@ -2,7 +2,7 @@ import random
 from typing import Callable, Optional
 import torch
 
-from utils.tokenizer import get_word_idx_to_token_idxs
+from src.utils.tokenizer import get_word_idx_to_token_idxs
 
 def get_aopc_solver_callable(
         *args,

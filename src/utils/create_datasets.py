@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer
 
-from utils.tokenizer import get_word_map_callable
+from src.utils.tokenizer import get_word_map_callable
 
 # set seeds
 random.seed(42)

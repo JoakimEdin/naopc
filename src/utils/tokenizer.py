@@ -1,8 +1,7 @@
-import torch
-from transformers import RobertaTokenizer, BertTokenizer, PreTrainedTokenizerBase
 import re
 
-
+import torch
+from transformers import BertTokenizer, PreTrainedTokenizerBase, RobertaTokenizer
 
 
 def get_tokens(
@@ -12,35 +11,36 @@ def get_tokens(
         torch.tensor(input_ids).squeeze().tolist()
     )
 
+
 def get_word_idx_to_token_idxs(word_map: torch.Tensor) -> dict[int, list[int]]:
     """Convert a word map to a dictionary where the key is the word index and the value is a list of token indices that belong to that word.
-    
+
     Args:
         word_map (torch.Tensor): Word map to convert
-    
+
     Returns:
         dict[int, list[int]]: Word map as a dictionary
     """
     word_map = word_map.tolist()
     return {k: [i for i, x in enumerate(word_map) if x == k] for k in set(word_map)}
 
+
 def get_word_map_callable(
     text_tokenizer: RobertaTokenizer | BertTokenizer,
     include_space: bool = True,
     is_roberta: bool = False,
 ):
-
     def get_word_map_bert(
         input_ids: torch.Tensor,
     ) -> torch.Tensor:
         """Get a list mapping each token to a word. This is necessary because the BERT tokenizer splits words into subwords.
         The spaces are joined with the preceding word.
-        
+
         Args:
             input_ids (torch.Tensor): Input ids to get word map for
             text_tokenizer (BertTokenizer): Text tokenizer to use
             include_space (bool): Include spaces in the word map
-        
+
         Returns:
             torch.Tensor: Word map of same length as input_ids
         """
@@ -65,13 +65,21 @@ def get_word_map_callable(
                 word_map.append(idx)
                 continue
 
-            if token == "\\" and i + 1 < len(tokens) - 1 and tokens[i+1].startswith("n"):
+            if (
+                token == "\\"
+                and i + 1 < len(tokens) - 1
+                and tokens[i + 1].startswith("n")
+            ):
                 idx += 1
                 word_map.append(idx)
                 continue
 
             # If token is all numbers and the previous token is a currency symbol, we treat it as a separate word
-            if re.match(r"^[0-9]*$", token) and i > 0 and re.match(r"^[\$\#\¢\£\€]*$", tokens[i-1]):
+            if (
+                re.match(r"^[0-9]*$", token)
+                and i > 0
+                and re.match(r"^[\$\#\¢\£\€]*$", tokens[i - 1])
+            ):
                 word_map.append(idx)
                 continue
 
@@ -85,14 +93,16 @@ def get_word_map_callable(
             if not re.match(r"^[a-zA-Z0-9]*$", token):
                 if not special_token_seen and i > 1:
                     idx += 1
-                if i + 1 < len(tokens) - 1 and not re.match(r"^[a-zA-Z0-9]*$", tokens[i+1]):
+                if i + 1 < len(tokens) - 1 and not re.match(
+                    r"^[a-zA-Z0-9]*$", tokens[i + 1]
+                ):
                     if not special_token_seen:
                         special_token_seen = True
                 word_map.append(idx)
                 continue
 
             if space_between_words and not special_token_seen:
-                if not tokens[i-1] == "'":
+                if not tokens[i - 1] == "'":
                     idx += 1
 
             if special_token_seen:
@@ -141,12 +151,11 @@ def get_word_map_callable(
                 word_map.append(idx)
                 continue
 
-
             if token.startswith("Ġ"):
                 space_between_words = True
-                
+
             if not re.match(r"^[a-zA-Z0-9]*$", token) and not token.startswith("Ġ"):
-                if idx>1:
+                if idx > 1:
                     idx += 1
                 word_map.append(idx)
                 space_between_words = True
@@ -159,27 +168,33 @@ def get_word_map_callable(
             word_map.append(idx)
 
         return torch.tensor(word_map)
-    
+
     if is_roberta:
         return get_word_map_roberta
     else:
         return get_word_map_bert
-    
 
 
 if __name__ == "__main__":
     import datasets
-    yelp = datasets.load_dataset("csv", data_files="yelp_polarity_test_small.csv", split="train")
 
-    roberta_tokenizer = RobertaTokenizer.from_pretrained("VictorSanh/roberta-base-finetuned-yelp-polarity")
-    bert_tokenizer = BertTokenizer.from_pretrained("textattack/bert-base-uncased-yelp-polarity")
+    yelp = datasets.load_dataset(
+        "csv", data_files="yelp_polarity_test_small.csv", split="train"
+    )
+
+    roberta_tokenizer = RobertaTokenizer.from_pretrained(
+        "VictorSanh/roberta-base-finetuned-yelp-polarity"
+    )
+    bert_tokenizer = BertTokenizer.from_pretrained(
+        "textattack/bert-base-uncased-yelp-polarity"
+    )
 
     roberta_callable = get_word_map_callable(roberta_tokenizer, is_roberta=True)
     bert_callable = get_word_map_callable(bert_tokenizer)
 
     mishaps = 0
     for example in yelp:
-        bert_ids = bert_tokenizer(example["text"])["input_ids"] 
+        bert_ids = bert_tokenizer(example["text"])["input_ids"]
         roberta_ids = roberta_tokenizer(example["text"])["input_ids"]
         bert_word_map = bert_callable(bert_ids)
         roberta_word_map = roberta_callable(roberta_ids)

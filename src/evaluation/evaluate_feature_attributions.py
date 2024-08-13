@@ -1,13 +1,9 @@
-import os
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
-
 import datasets
 import pandas as pd
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-from utils.tokenizer import convert_word_map_to_dict
+from src.utils.tokenizer import get_word_idx_to_token_idxs
 
 BATCH_SIZE = 1024
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -104,7 +100,7 @@ for dataset_name in dataset_names:
                             word_map = word_map - 1
                             word_map[0] = 0
 
-                        word_map_dict = convert_word_map_to_dict(word_map)
+                        word_map_dict = get_word_idx_to_token_idxs(word_map)
 
                         word_attributions = torch.from_numpy(word_attributions)[
                             1:-1

@@ -2,7 +2,7 @@ import torch
 from datasets import Dataset
 import torch.utils
 import itertools
-from utils.tokenizer import convert_word_map_to_dict
+from src.utils.tokenizer import get_word_idx_to_token_idxs
 
 class PerturbDataset(torch.utils.data.IterableDataset):
     def __init__(self, dataset: Dataset, mask_token_id: int, pad_token_id: int, input_ids_column_name: str = "input_ids", word_map_callable: callable = None):
@@ -17,7 +17,7 @@ class PerturbDataset(torch.utils.data.IterableDataset):
         for example in self.dataset:
             input_ids = torch.tensor(example[self.input_ids_column_name])
             
-            word_map = convert_word_map_to_dict(self.word_map_callable(input_ids))
+            word_map = get_word_idx_to_token_idxs(self.word_map_callable(input_ids))
 
             permutation = list(range(1, len(word_map.keys()) - 1))
             for i in range(len(permutation) + 1):
