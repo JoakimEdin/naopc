@@ -25,15 +25,16 @@ curl -sSL https://install.python-poetry.org | python3 -
 
 <details>
 <summary>Install dependencies</summary>
+Clone the repository and navigate to the project directory
+
 ```bash
-# Clone the repository
 git clone https://github.com/JoakimEdin/faithfulness.git
-
-# Navigate to the project directory
 cd faithfulness
-
-# Install dependencies
+```
+Then install dependencies
+```bash
 make install
+```
 
 </details>
 
