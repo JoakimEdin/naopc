@@ -39,7 +39,12 @@ make install
 </details>
 
 ## Usage
+You can reproduce our three experiments using the following lines of code:
+- `CUDA_VISIBLE_DEVICES="0" bash scripts/experiments/experiment_1.sh`
+- `CUDA_VISIBLE_DEVICES="0" bash scripts/experiments/experiment_2.sh`
+- `CUDA_VISIBLE_DEVICES="0" bash scripts/experiments/experiment_3.sh`
 
+These scripts will run the experiments and create the figures and tables. If you wish to use a different GPU device, you can change the value of `CUDA_VISIBLE_DEVICES`.
 
 
 ## Citation
