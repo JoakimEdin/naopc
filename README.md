@@ -49,7 +49,7 @@ These scripts will run the experiments and create the figures and tables. If you
 
 ## Citation
 
-```
+```latex
 @misc{edin2024normalizedaopcfixingmisleading,
       title={Normalized AOPC: Fixing Misleading Faithfulness Metrics for Feature Attribution Explainability}, 
       author={Joakim Edin and Andreas Geert Motzfeldt and Casper L. Christensen and Tuukka Ruotsalo and Lars Maaløe and Maria Maistro},
