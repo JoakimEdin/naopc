@@ -50,5 +50,13 @@ These scripts will run the experiments and create the figures and tables. If you
 ## Citation
 
 ```
-
+@misc{edin2024normalizedaopcfixingmisleading,
+      title={Normalized AOPC: Fixing Misleading Faithfulness Metrics for Feature Attribution Explainability}, 
+      author={Joakim Edin and Andreas Geert Motzfeldt and Casper L. Christensen and Tuukka Ruotsalo and Lars Maaløe and Maria Maistro},
+      year={2024},
+      eprint={2408.08137},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2408.08137}, 
+}
 ```
