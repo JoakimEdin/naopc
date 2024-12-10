@@ -83,7 +83,6 @@ def main(
 
     model.to(device)
     model.eval()
-    target_label = torch.tensor([1]).to(device)
 
     if explanation_attributions is not None:
         preprocessing_step = "feature_attributions"
@@ -127,6 +126,7 @@ def main(
         i += 1
         if i == stop:
             break
+        target_label = torch.tensor(example["label"]).to(device)
         input_ids = torch.tensor(example["input_ids"]).to(device).unsqueeze(0)
         if explanation_attributions is not None:
             attributions_for_example = attributions_df[
