@@ -1,5 +1,9 @@
+from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
+
+path_to_images = Path(__file__).parent.parent / "figures" / "violinplots"
+path_to_images.mkdir(parents=True, exist_ok=True)
 
 model_names = [
     "textattack/bert-base-uncased-SST-2",
@@ -41,24 +45,24 @@ for column_idx, dataset in enumerate(datasets):
         suff_data = [frame["sufficiency"] for frame in frames]
 
         # big plot
-        ax_big[row_idx, column_idx].boxplot(
-            comp_data,
-            showmeans=False,
-            meanline=False,
-            tick_labels=beam_sizes,
-            showfliers=False,
-            patch_artist=True,
-            boxprops=dict(facecolor="#377eb8"),
+        parts1 = ax_big[row_idx, column_idx].violinplot(
+            comp_data, positions=range(len(beam_sizes)), showmeans=True
         )
-        ax_big[row_idx, column_idx].boxplot(
-            suff_data,
-            showmeans=False,
-            meanline=False,
-            tick_labels=beam_sizes,
-            showfliers=False,
-            patch_artist=True,
-            boxprops=dict(facecolor="#4daf4a"),
+        for pc in parts1["bodies"]:
+            pc.set_facecolor("#377eb8")
+            pc.set_edgecolor("black")
+            pc.set_alpha(0.7)
+
+        parts2 = ax_big[row_idx, column_idx].violinplot(
+            suff_data, positions=range(len(beam_sizes)), showmeans=True
         )
+        for pc in parts2["bodies"]:
+            pc.set_facecolor("#4daf4a")
+            pc.set_edgecolor("black")
+            pc.set_alpha(0.7)
+
+        ax_big[row_idx, column_idx].set_xticks(range(len(beam_sizes)))
+        ax_big[row_idx, column_idx].set_xticklabels(beam_sizes)
         ax_big[row_idx, column_idx].set_ylim(-0.1, 1.05)
         ax_big[row_idx, column_idx].tick_params(axis="both", which="both", labelsize=12)
         ax_big[row_idx, column_idx].grid(axis="y", which="both")
@@ -74,10 +78,7 @@ for column_idx, dataset in enumerate(datasets):
 
         if column_idx == 0:
             model_name = model_map[model.split("/")[1]]
-            if "roberta" in model_name.lower():
-                y_pos = 0.15
-            else:
-                y_pos = 0.3
+            y_pos = 0.3 if "bert" in model_name.lower() else 0.15
 
             ax_big[row_idx, column_idx].text(
                 -0.8,
@@ -89,30 +90,23 @@ for column_idx, dataset in enumerate(datasets):
                 fontweight="bold",
             )
             ax_big[row_idx, column_idx].set_ylabel("AOPC", fontsize=14)
-            # .annotate(model_name, (-0.65, 0.5), xycoords = 'axes fraction', rotation = 90, va = 'center', fontweight = 'bold', fontsize = 18)
 
-        # individual boxplot
+        # individual violin plot
         fig, ax = plt.subplots(figsize=(3, 3))
-        b1 = ax.boxplot(
-            comp_data,
-            showmeans=False,
-            meanline=False,
-            tick_labels=beam_sizes,
-            showfliers=False,
-            patch_artist=True,
-            boxprops=dict(facecolor="#377eb8"),
-        )
-        b2 = ax.boxplot(
-            suff_data,
-            showmeans=False,
-            meanline=False,
-            tick_labels=beam_sizes,
-            showfliers=False,
-            patch_artist=True,
-            boxprops=dict(facecolor="#ff7f00"),
-        )
+        v1 = ax.violinplot(comp_data, positions=range(len(beam_sizes)), showmeans=True)
+        v2 = ax.violinplot(suff_data, positions=range(len(beam_sizes)), showmeans=True)
+        for v in v1["bodies"]:
+            v.set_facecolor("#377eb8")
+            v.set_edgecolor("black")
+            v.set_alpha(0.7)
+        for v in v2["bodies"]:
+            v.set_facecolor("#ff7f00")
+            v.set_edgecolor("black")
+            v.set_alpha(0.7)
+
+        ax.set_xticks(range(len(beam_sizes)))
+        ax.set_xticklabels(beam_sizes)
         ax.legend(
-            [b1["boxes"][0], b2["boxes"][0]],
             ["Upper limit", "Lower limit"],
             loc="center right",
             bbox_to_anchor=(0.8, 0.3),
@@ -123,12 +117,12 @@ for column_idx, dataset in enumerate(datasets):
         plt.grid(axis="y", which="both")
         fig.tight_layout()
         fig.savefig(
-            f"figures/boxplots/{dataset}_{model.split('/')[-1]}_increasing_beam_sizes.pdf",
+            path_to_images
+            / f"violin_{dataset}_{model.split('/')[-1]}_increasing_beam_sizes.pdf",
             format="pdf",
         )
 
 leg = fig_big.legend(
-    [b1["boxes"][0], b2["boxes"][0]],
     ["Upper AOPC limit", "Lower AOPC limit"],
     bbox_to_anchor=(0.8, 0.6),
     ncol=2,
@@ -136,4 +130,4 @@ leg = fig_big.legend(
     frameon=False,
 )
 
-fig_big.savefig("figures/boxplots/all_increasing_beam_sizes.pdf", format="pdf")
+fig_big.savefig(path_to_images / "violin_all_increasing_beam_sizes.pdf", format="pdf")

@@ -4,11 +4,11 @@ import torch
 from rich.progress import track
 from transformers import AutoTokenizer
 
-from src.feature_attribution_methods.decompx.bert import BertForSequenceClassification
-from src.feature_attribution_methods.decompx.roberta import (
+from aopc.feature_attribution_methods.decompx.bert import BertForSequenceClassification
+from aopc.feature_attribution_methods.decompx.roberta import (
     RobertaForSequenceClassification,
 )
-from src.feature_attribution_methods.feature_attribution_methods import (
+from aopc.feature_attribution_methods.feature_attribution_methods import (
     get_attention_callable,
     get_decompx_callable,
     get_deeplift_callable,
@@ -18,7 +18,7 @@ from src.feature_attribution_methods.feature_attribution_methods import (
     get_lime_callable,
     get_occlusion_1_callable,
 )
-from src.utils.tokenizer import get_word_map_callable
+from aopc.utils.tokenizer import get_word_map_callable
 
 BATCH_SIZE = 1024
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

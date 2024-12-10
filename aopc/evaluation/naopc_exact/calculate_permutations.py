@@ -6,8 +6,8 @@ import torch
 from rich.progress import track
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-from src.utils.dataset import PerturbDataset
-from src.utils.tokenizer import get_word_map_callable
+from aopc.utils.dataset import PerturbDataset
+from aopc.utils.tokenizer import get_word_map_callable
 
 BATCH_SIZE = 1024
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

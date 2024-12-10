@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer
 
-from src.utils.tokenizer import get_word_map_callable
+from aopc.utils.tokenizer import get_word_map_callable
 
 # set seeds
 random.seed(42)
@@ -45,7 +45,13 @@ for model_name in model_names:
     )
 
 
-for dataset, dataset_name in [(snli, "snli"), (ag_news , "ag_news"),(yelp, "yelp"), (sst2, "sst2"), (imdb, "imdb")]:
+for dataset, dataset_name in [
+    (snli, "snli"),
+    (ag_news, "ag_news"),
+    (yelp, "yelp"),
+    (sst2, "sst2"),
+    (imdb, "imdb"),
+]:
     if dataset_name in {"imdb", "sst2", "yelp"}:
         dataset = dataset.filter(lambda x: (x["label"] == 1))
     dataset = dataset.map(
@@ -98,19 +104,19 @@ for dataset, dataset_name in [(snli, "snli"), (ag_news , "ag_news"),(yelp, "yelp
     dataset_small = dataset.filter(lambda x: (x["word_length"] <= 12))
     df = dataset_small.to_pandas().reset_index()
 
-    if (len(df)>0) and (dataset_name in {"sst2", "yelp"}):
+    if (len(df) > 0) and (dataset_name in {"sst2", "yelp"}):
         df = df.rename(columns={"index": "id"})
         df[["word_length", "token_length", "label", "id", "text"]].to_csv(
             f"data/{dataset_name}_test_short.csv", index=False
-    )
+        )
 
     df = dataset.to_pandas().reset_index()
     df = df.sample(min(1000, len(df)))  # sample 1000 random examples
     df = df.rename(columns={"index": "id"})
     if dataset_name == "snli":
-        df[["word_length", "token_length", "label", "id", "premise", "hypothesis"]].to_csv(
-        f"data/{dataset_name}_test_long.csv", index=False
-    )
+        df[
+            ["word_length", "token_length", "label", "id", "premise", "hypothesis"]
+        ].to_csv(f"data/{dataset_name}_test_long.csv", index=False)
     else:
         df[["word_length", "token_length", "label", "id", "text"]].to_csv(
             f"data/{dataset_name}_test_long.csv", index=False

@@ -10,14 +10,14 @@ import torch
 from rich.progress import track
 from transformers import AutoTokenizer
 
-from src.evaluation.naopc_beam.bound_approximation_methods import (
+from aopc.evaluation.naopc_beam.bound_approximation_methods import (
     get_aopc_solver_callable,
 )
-from src.feature_attribution_methods.decompx.bert import BertForSequenceClassification
-from src.feature_attribution_methods.decompx.roberta import (
+from aopc.feature_attribution_methods.decompx.bert import BertForSequenceClassification
+from aopc.feature_attribution_methods.decompx.roberta import (
     RobertaForSequenceClassification,
 )
-from src.utils.tokenizer import get_word_idx_to_token_idxs, get_word_map_callable
+from aopc.utils.tokenizer import get_word_idx_to_token_idxs, get_word_map_callable
 
 
 @torch.no_grad()
@@ -108,6 +108,7 @@ def main(
     processing_time = []
     comp_aopcs = []
     suff_aopcs = []
+    word_lengths = []
 
     aopc_solver_callable = get_aopc_solver(
         model,
@@ -120,11 +121,13 @@ def main(
     )
 
     i = 0
-    for example in track(
-        dataset, description="Approximating bounds...", total=len(dataset)
-    ):
-        input_ids = torch.tensor(example["input_ids"]).to(device).unsqueeze(0)
+    stop = 100
+    for example in track(dataset, description="Approximating bounds...", total=stop):
+        i += 1
+        if i == stop:
+            break
         target_label = torch.tensor(example["label"]).to(device)
+        input_ids = torch.tensor(example["input_ids"]).to(device).unsqueeze(0)
         if explanation_attributions is not None:
             attributions_for_example = attributions_df[
                 attributions_df["id"] == example["id"]
@@ -212,6 +215,8 @@ def main(
             upper_delta = math.nan
             lower_delta = math.nan
 
+        word_length = len(input_ids[0])
+
         id_list.append(example["id"])
         word_maps.append(word_map.numpy())
         upper_word_attribution_list.append(comprehensiveness_attributions.numpy())
@@ -223,6 +228,7 @@ def main(
         processing_time.append(total_time)
         comp_aopcs.append(comp_aopc)
         suff_aopcs.append(suff_aopc)
+        word_lengths.append(word_length)
 
     df = pd.DataFrame(
         {
@@ -237,6 +243,7 @@ def main(
             "processing_time": processing_time,
             "comprehensiveness": comp_aopcs,
             "sufficiency": suff_aopcs,
+            "word_length": word_lengths,
         }
     )
     preprocesing_string = (
@@ -245,7 +252,7 @@ def main(
         else preprocessing_step + "_" + explanation_attributions
     )
     df.to_parquet(
-        f"results/aopc_limits_approx/{dataset_name}_{dataset_length}_{preprocesing_string}_beam_size_{str(beam_size)}_{model_name.split('/')[1]}.parquet"
+        f"results/aopc_limits_approx_increasing_beams/{dataset_name}_{dataset_length}_{preprocesing_string}_beam_size_{str(beam_size)}_{model_name.split('/')[1]}.parquet"
     )
 
 

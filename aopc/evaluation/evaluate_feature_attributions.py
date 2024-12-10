@@ -3,7 +3,7 @@ import pandas as pd
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-from src.utils.tokenizer import get_word_idx_to_token_idxs
+from aopc.utils.tokenizer import get_word_idx_to_token_idxs
 
 BATCH_SIZE = 1024
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
