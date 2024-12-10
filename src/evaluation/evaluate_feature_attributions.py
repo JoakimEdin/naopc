@@ -53,7 +53,6 @@ for dataset_name in dataset_names:
             )
             model.to(device)
             model.eval()
-            target_label = torch.tensor([1]).to(device)
             feature_attributions_df = pd.read_parquet(
                 f"results/feature_attribution_scores/{dataset_name}_{length}_{model_name.split('/')[1]}.parquet"
             )
@@ -72,6 +71,7 @@ for dataset_name in dataset_names:
                             .to(device)
                             .unsqueeze(0)
                         )
+                        target_label = torch.tensor(example["label"]).to(device)
                         full_output = (
                             model(input_ids)
                             .logits.softmax(1)

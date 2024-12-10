@@ -83,7 +83,6 @@ def main(
 
     model.to(device)
     model.eval()
-    target_label = torch.tensor([1]).to(device)
 
     if explanation_attributions is not None:
         preprocessing_step = "feature_attributions"
@@ -125,6 +124,7 @@ def main(
         dataset, description="Approximating bounds...", total=len(dataset)
     ):
         input_ids = torch.tensor(example["input_ids"]).to(device).unsqueeze(0)
+        target_label = torch.tensor(example["label"]).to(device)
         if explanation_attributions is not None:
             attributions_for_example = attributions_df[
                 attributions_df["id"] == example["id"]

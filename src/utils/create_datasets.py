@@ -15,8 +15,12 @@ torch.manual_seed(42)
 yelp = datasets.load_dataset("yelp_polarity", split="test")
 sst2 = datasets.load_dataset("sst2", split="validation")
 imdb = datasets.load_dataset("imdb", split="test")
+snli = datasets.load_dataset("snli", split="test")
+ag_news = datasets.load_dataset("ag_news", split="test")
 
 sst2 = sst2.rename_columns({"sentence": "text"})
+# we combine the premise and hypothesis to calculate num words. It does not get saved.
+snli = snli.map(lambda x: {"text": x["premise"] + " " + x["hypothesis"]})
 
 model_names = [
     "textattack/bert-base-uncased-SST-2",
@@ -41,8 +45,9 @@ for model_name in model_names:
     )
 
 
-for dataset, dataset_name in [(yelp, "yelp"), (sst2, "sst2"), (imdb, "imdb")]:
-    dataset = dataset.filter(lambda x: (x["label"] == 1))
+for dataset, dataset_name in [(snli, "snli"), (ag_news , "ag_news"),(yelp, "yelp"), (sst2, "sst2"), (imdb, "imdb")]:
+    if dataset_name in {"imdb", "sst2", "yelp"}:
+        dataset = dataset.filter(lambda x: (x["label"] == 1))
     dataset = dataset.map(
         lambda x: {
             f"input_ids_{model_name}": tokenizer(x["text"])["input_ids"]
@@ -93,7 +98,7 @@ for dataset, dataset_name in [(yelp, "yelp"), (sst2, "sst2"), (imdb, "imdb")]:
     dataset_small = dataset.filter(lambda x: (x["word_length"] <= 12))
     df = dataset_small.to_pandas().reset_index()
 
-    if len(df)>0:
+    if (len(df)>0) and (dataset_name in {"sst2", "yelp"}):
         df = df.rename(columns={"index": "id"})
         df[["word_length", "token_length", "label", "id", "text"]].to_csv(
             f"data/{dataset_name}_test_short.csv", index=False
@@ -102,6 +107,11 @@ for dataset, dataset_name in [(yelp, "yelp"), (sst2, "sst2"), (imdb, "imdb")]:
     df = dataset.to_pandas().reset_index()
     df = df.sample(min(1000, len(df)))  # sample 1000 random examples
     df = df.rename(columns={"index": "id"})
-    df[["word_length", "token_length", "label", "id", "text"]].to_csv(
+    if dataset_name == "snli":
+        df[["word_length", "token_length", "label", "id", "premise", "hypothesis"]].to_csv(
         f"data/{dataset_name}_test_long.csv", index=False
     )
+    else:
+        df[["word_length", "token_length", "label", "id", "text"]].to_csv(
+            f"data/{dataset_name}_test_long.csv", index=False
+        )
