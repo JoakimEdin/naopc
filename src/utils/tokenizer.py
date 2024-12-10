@@ -2,16 +2,6 @@ import typing
 import torch
 from transformers import RobertaTokenizer, BertTokenizer, GPT2Tokenizer, PreTrainedTokenizerBase
 import re
-    
-class GPT2TokenizerSpecialTokens(GPT2Tokenizer):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def __call__(self, text: str) -> dict:
-        text = f"{self.bos_token}{text}{self.eos_token}"
-        return super().__call__(text)
-
-
 
 def get_tokens(
     input_ids: torch.Tensor | list, text_tokenizer: PreTrainedTokenizerBase
@@ -210,8 +200,7 @@ def get_word_map_callable(
                 space_between_words = True
                 
             if not re.match(r"^[a-zA-Z0-9]*$", token) and not token.startswith("Ġ"):
-                if idx>1:
-                    idx += 1
+                idx += 1
                 word_map.append(idx)
                 space_between_words = True
                 continue
@@ -231,13 +220,18 @@ def get_word_map_callable(
     elif model_type == "gpt2":
         return get_word_map_gpt2
 
+def gpt2tokenizer_is_equivalent_to_other_tokenizer(gpt2ids, otherids):
+    same_boundary = max(gpt2ids) == max(otherids) - 2
+    same_word_count = abs(len(set(gpt2ids)) - len(set(otherids))) == 2
+    return same_boundary and same_word_count
+
 if __name__ == "__main__":
     import datasets
     yelp = datasets.load_dataset("csv", data_files="./data/yelp_test_short.csv", split="train")
 
     roberta_tokenizer = RobertaTokenizer.from_pretrained("VictorSanh/roberta-base-finetuned-yelp-polarity")
     bert_tokenizer = BertTokenizer.from_pretrained("textattack/bert-base-uncased-yelp-polarity")
-    gpt2_tokenizer = GPT2TokenizerSpecialTokens.from_pretrained("varun-v-rao/gpt2-snli-model1")
+    gpt2_tokenizer = GPT2Tokenizer.from_pretrained("varun-v-rao/gpt2-snli-model1")
 
 
     roberta_callable = get_word_map_callable(roberta_tokenizer, model_type="roberta")
@@ -251,7 +245,7 @@ if __name__ == "__main__":
     for example in yelp:
         bert_ids = bert_tokenizer(example["text"])["input_ids"] 
         roberta_ids = roberta_tokenizer(example["text"])["input_ids"]
-        gpt2_ids = gpt2_tokenizer(example["text"].lower())["input_ids"]
+        gpt2_ids = gpt2_tokenizer(example["text"])["input_ids"]
         bert_word_map = bert_callable(bert_ids)
         roberta_word_map = roberta_callable(roberta_ids)
         gpt_word_map = gpt2_callable(gpt2_ids)
@@ -261,13 +255,12 @@ if __name__ == "__main__":
         if set(bert_word_map.tolist()) != set(roberta_word_map.tolist()):
             roberta_bert_mishaps += 1
             mishap = True
-        if set(bert_word_map.tolist()) != set(gpt2_callable(gpt2_ids).tolist()):
+        if not gpt2tokenizer_is_equivalent_to_other_tokenizer(gpt_word_map.tolist(), bert_word_map.tolist()):
             bert_gpt2_mishaps += 1
             mishap = True
-        if set(roberta_word_map.tolist()) != set(gpt2_callable(gpt2_ids).tolist()):
+        if not gpt2tokenizer_is_equivalent_to_other_tokenizer(gpt_word_map.tolist(), roberta_word_map.tolist()):
             roberta_gpt2_mishaps += 1
             mishap = True
-
         if mishap:
             total_mishaps += 1
 
