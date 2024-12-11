@@ -102,23 +102,23 @@ class Aopc:
 
     def evaluate(
         self,
-        x: DatasetTypes,
+        data: DatasetTypes,
         word_map: WordMap,
         normalization: NormalizationType,
         map_kwargs: dict | None = None,
     ) -> DatasetTypes:
         """Translate a row, dataset or dataset dict."""
         map_kwargs = map_kwargs or {}
-        if isinstance(x, datasets.Dataset):
-            return self.evaluate_dset(x, word_map, normalization, **map_kwargs)
-        if isinstance(x, datasets.DatasetDict):
+        if isinstance(data, datasets.Dataset):
+            return self.evaluate_dset(data, word_map, normalization, **map_kwargs)
+        if isinstance(data, datasets.DatasetDict):
             return datasets.DatasetDict(
                 {
                     k: self.evaluate_dset(v, word_map, normalization, **map_kwargs)
-                    for k, v in x.items()
+                    for k, v in data.items()
                 }
             )  # type: ignore
-        if isinstance(x, dict):
-            return self.evaluate_row(x, word_map, normalization)
+        if isinstance(data, dict):
+            return self.evaluate_row(data, word_map, normalization)
 
         raise TypeError(f"Cannot evaluate input of type `{type(x)}`")
