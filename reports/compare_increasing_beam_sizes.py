@@ -85,10 +85,10 @@ for column_idx, dataset in enumerate(datasets):
             # .annotate(model_name, (-0.65, 0.5), xycoords = 'axes fraction', rotation = 90, va = 'center', fontweight = 'bold', fontsize = 18)
 
         # individual boxplot
-        fig, ax = plt.subplots(figsize=(5, 5))
+        fig, ax = plt.subplots(figsize=(3, 3))
 
         sns.violinplot(ax=ax, data=df, y="aopc", x="beam_size", hue="metric")
-        # change the legend names to "Upper AOPC limit" and "Lower AOPC limit"
+
         handles, labels = ax.get_legend_handles_labels()
         ax.legend(handles, ["Upper AOPC limit", "Lower AOPC limit"], loc="lower center", fontsize=12)
 
