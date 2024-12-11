@@ -1,1 +1,1 @@
-from aopc.evaluation import Aopc
+from aopc.main import Aopc  # noqa: F401
