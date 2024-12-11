@@ -8,7 +8,7 @@ help:  ## Display this help
 
 .PHONY: install
 install:  ## Install the package for development along with pre-commit hooks.
-	poetry install --with dev
+	poetry install --with dev --with test --with feat-attr
 
 .PHONY: clean
 clean:  ## Clean up the project directory removing __pycache__, .coverage, and the install stamp file.
