@@ -1,5 +1,8 @@
 import matplotlib.pyplot as plt
 import pandas as pd
+import seaborn as sns
+
+sns.set_theme(style="whitegrid", context="paper", font_scale=1.2, palette="colorblind")
 
 model_names = [
     "textattack/bert-base-uncased-SST-2",
@@ -36,32 +39,20 @@ for column_idx, dataset in enumerate(datasets):
             df = pd.read_parquet(file)
             df["beam_size"] = beam_size
             frames.append(df)
-
-        comp_data = [frame["comprehensiveness"] for frame in frames]
-        suff_data = [frame["sufficiency"] for frame in frames]
+        
+        df = pd.concat(frames)
+        # make metric a column for seaborn
+        df = pd.melt(df, id_vars=["beam_size"], value_vars=["comprehensiveness", "sufficiency"], var_name="metric", value_name="aopc")
 
         # big plot
-        ax_big[row_idx, column_idx].boxplot(
-            comp_data,
-            showmeans=False,
-            meanline=False,
-            tick_labels=beam_sizes,
-            showfliers=False,
-            patch_artist=True,
-            boxprops=dict(facecolor="#377eb8"),
-        )
-        ax_big[row_idx, column_idx].boxplot(
-            suff_data,
-            showmeans=False,
-            meanline=False,
-            tick_labels=beam_sizes,
-            showfliers=False,
-            patch_artist=True,
-            boxprops=dict(facecolor="#4daf4a"),
-        )
-        ax_big[row_idx, column_idx].set_ylim(-0.1, 1.05)
+        sns.violinplot(ax=ax_big[row_idx, column_idx], data=df, y="aopc", x="beam_size", hue="metric")
+        # no legend nor labels
+        ax_big[row_idx, column_idx].get_legend().remove()
+        ax_big[row_idx, column_idx].set_xlabel("")
+        ax_big[row_idx, column_idx].set_ylabel("")
+
+        ax_big[row_idx, column_idx].set_ylim(-1.3, 1.3)
         ax_big[row_idx, column_idx].tick_params(axis="both", which="both", labelsize=12)
-        ax_big[row_idx, column_idx].grid(axis="y", which="both")
 
         if row_idx == 0:
             dataset_name = dataset_map[dataset]
@@ -75,12 +66,12 @@ for column_idx, dataset in enumerate(datasets):
         if column_idx == 0:
             model_name = model_map[model.split("/")[1]]
             if "roberta" in model_name.lower():
-                y_pos = 0.15
+                y_pos = -0.5
             else:
-                y_pos = 0.3
+                y_pos = -0.3
 
             ax_big[row_idx, column_idx].text(
-                -0.8,
+                -1.7,
                 y_pos,
                 model_name,
                 fontsize=18,
@@ -89,48 +80,31 @@ for column_idx, dataset in enumerate(datasets):
                 fontweight="bold",
             )
             ax_big[row_idx, column_idx].set_ylabel("AOPC", fontsize=14)
+            # move the y label to the right
+            ax_big[row_idx, column_idx].yaxis.set_label_coords(-0.1, 0.5)
             # .annotate(model_name, (-0.65, 0.5), xycoords = 'axes fraction', rotation = 90, va = 'center', fontweight = 'bold', fontsize = 18)
 
         # individual boxplot
-        fig, ax = plt.subplots(figsize=(3, 3))
-        b1 = ax.boxplot(
-            comp_data,
-            showmeans=False,
-            meanline=False,
-            tick_labels=beam_sizes,
-            showfliers=False,
-            patch_artist=True,
-            boxprops=dict(facecolor="#377eb8"),
-        )
-        b2 = ax.boxplot(
-            suff_data,
-            showmeans=False,
-            meanline=False,
-            tick_labels=beam_sizes,
-            showfliers=False,
-            patch_artist=True,
-            boxprops=dict(facecolor="#ff7f00"),
-        )
-        ax.legend(
-            [b1["boxes"][0], b2["boxes"][0]],
-            ["Upper limit", "Lower limit"],
-            loc="center right",
-            bbox_to_anchor=(0.8, 0.3),
-        )
+        fig, ax = plt.subplots(figsize=(5, 5))
+
+        sns.violinplot(ax=ax, data=df, y="aopc", x="beam_size", hue="metric")
+        # change the legend names to "Upper AOPC limit" and "Lower AOPC limit"
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles, ["Upper AOPC limit", "Lower AOPC limit"], loc="lower center", fontsize=12)
+
         plt.ylabel("AOPC")
         plt.xlabel("Beam Size")
-        plt.ylim(-0.1, 1.05)
-        plt.grid(axis="y", which="both")
+        plt.ylim(-1.25, 1.25)
         fig.tight_layout()
         fig.savefig(
             f"figures/boxplots/{dataset}_{model.split('/')[-1]}_increasing_beam_sizes.pdf",
             format="pdf",
         )
-
+# move the box sligly down
 leg = fig_big.legend(
-    [b1["boxes"][0], b2["boxes"][0]],
-    ["Upper AOPC limit", "Lower AOPC limit"],
-    bbox_to_anchor=(0.8, 0.6),
+    handles=ax_big[0, 0].get_legend_handles_labels()[0],
+    labels=["Upper AOPC limit", "Lower AOPC limit"],
+    bbox_to_anchor=(0.8, 0.412),
     ncol=2,
     fontsize=18,
     frameon=False,
