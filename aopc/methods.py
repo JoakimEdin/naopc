@@ -6,7 +6,6 @@ import torch
 from dataclasses import dataclass
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 import pydantic
-from rich.progress import track
 import itertools
 from numba import jit
 from numba.typed import Dict
@@ -118,11 +117,6 @@ def get_bounds_from_permutations(df_id: pd.DataFrame, has_eos: bool = False, has
     d = Dict()
     min_max_lookup = Dict()
 
-
-    df_id["pred"] = torch.softmax(
-        torch.tensor(df_id[["positive_logit", "negative_logit"]].values), dim=1
-    ).numpy()[:, 0]
-
     full_input_logit = df_id[df_id["word_key"] == "[]"][["id", "pred"]].rename(
         {"pred": "full_input_logit"}, axis=1
     )
@@ -172,141 +166,533 @@ class Explanation:
     descending: bool
     complete: bool
 
+
+def calculate_aopc_for_attributions(
+    input_ids: torch.Tensor,
+    target_label: int,
+    attributions: torch.Tensor | list[float],
+    model: torch.nn.Module,
+    mask_token_id: int,
+    bos_token_id: int,
+    eos_token_id: int,
+    word_map: Optional[torch.Tensor | list[int]] = None,
+    descending: bool = True,
+):
+    full_output = (
+        model(input_ids)
+        .logits.softmax(1)
+        .squeeze(0)
+        .cpu()[target_label]
+        .item()
+    )
+
+    has_bos = input_ids[0, 0].item() == bos_token_id
+    has_eos = input_ids[0, -1].item() == eos_token_id
+
+    tokens_start = 0 + has_bos
+    tokens_end = -1 if has_eos else len(input_ids[0])
+
+    attributions = attributions[
+        tokens_start:tokens_end
+    ]
+    ranking = (
+        torch.argsort(attributions, descending=True) + has_bos
+    )
+    permutation_input_ids = input_ids.clone()
+
+    if not descending:
+        ranking = ranking.flip(0)
+
+    aopc = 0
+    for entry in ranking:
+        if word_map is not None:
+            token_indices = word_map[entry.item()]
+        else:
+            token_indices = entry.item()
+
+        permutation_input_ids[:, token_indices] = mask_token_id
+        aopc += (
+            full_output
+            - model(permutation_input_ids)
+            .logits.softmax(1)
+            .squeeze(0)
+            .cpu()[target_label]
+            .item()
+        )
+
+    aopc /= len(ranking)
+
+    return aopc
+
+
+def get_exact_bounds(model: torch.nn.Module, device: str | torch.device, input_ids: torch.Tensor, target_ids: int | torch.Tensor, eos_token_id: int | None, bos_token_id: int | None, mask_token_id: int | None, pad_token_id: int | None, word_map: Optional[dict[int, list[int]]], batch_size: int = 1024):
+    perturb_dataset = PerturbDataset(input_ids, eos_token_id, bos_token_id, mask_token_id, pad_token_id, word_map)
+    perturb_dataloader = torch.utils.data.DataLoader(
+        perturb_dataset,
+        batch_size=batch_size,
+        num_workers=0,
+    )
+    logit_list = []
+    id_list = []
+    token_key_list = []
+    word_key_list = []
+
+    has_eos, has_bos = (input_ids[0, -1].item() == eos_token_id), (input_ids[0, 0].item() == bos_token_id)
+    num_features = len(word_map) if word_map else input_ids.shape[-1]
+
+    with torch.no_grad():
+        for ids, token_key, word_key, input_ids_batch in perturb_dataloader:
+            logits = torch.softmax(model(
+                input_ids_batch.to(device)
+            ).logits.cpu(), dim=1)
+            logit_list.extend(logits[:, target_ids].squeeze().tolist())
+            id_list.extend(ids)
+            token_key_list.extend(token_key)
+            word_key_list.extend(word_key)
+
+    df = pd.DataFrame(
+        {
+            "id": id_list,
+            "token_key": token_key_list,
+            "word_key": word_key_list,
+            "pred": logit_list,
+        }
+    )
+
+    lower, upper = get_bounds_from_permutations(df, has_eos=has_eos, has_bos=has_bos)
+    return lower, upper
+
+
+def mask_input(x, value_indices, mask_token_id: int, word_map=None):
+    mask = torch.ones_like(x)
+    try:
+        if word_map is not None:
+            transformed_indices = [
+                word_map[i] for i in value_indices
+            ]
+            value_indices = [item for sublist in transformed_indices for item in sublist]
+    except KeyError:
+        pass
+    mask[:,value_indices] = 0
+    return torch.where(
+        mask == 1,
+        x, 
+        torch.tensor(mask_token_id)
+    )
+
+@torch.no_grad()
+def get_prediction(model: torch.nn.Module, input_ids: torch.Tensor, target_ids: torch.Tensor | int, device: str | torch.device, batch_size: int = 1024):
+
+    temp_dataloader = torch.utils.data.DataLoader(
+        input_ids,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=0,
+    )
+
+    outs = []
+
+    for input_ids_batch in temp_dataloader:
+        input_ids_batch = input_ids_batch.to(device)
+        with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=True):
+            y_pred = (
+                model(input_ids_batch).logits
+            )  # [num_classes]
+            out = torch.nn.functional.softmax(y_pred, dim=1)[:, target_ids].detach().cpu()
+            outs.append(out)
+    return torch.cat(outs, dim=0)
+
+
+def suggest_new_feature_importance(self, explanation: Explanation, feature_index: int):
+    new_importance = len(explanation.remaining_features) - 1 if explanation.descending else len(explanation.feature_importances)
+    new_feature_importances = explanation.feature_importances.copy()
+    new_feature_importances[feature_index] = new_importance
+    new_remaining_features = explanation.remaining_features.copy()
+    new_remaining_features.remove(feature_index)
+    return Explanation(
+        feature_importances=new_feature_importances,
+        remaining_features=new_remaining_features,
+        previous_score=explanation.cumulative_score,
+        cumulative_score=None,
+        non_cumulative_score=0,
+        descending=explanation.descending,
+        complete=False,
+    )
+
+
+def extend_explanation(explanation: Explanation):
+    # For an explanation, we propose N new explanations where N is the number of remaining features
+    # For each new explanation, we propose that the new feature importance is the current iteration,
+    # such that for any new feature, their importance decreases or increases by 1 each iteration
+    if explanation.complete:
+        return [explanation]
+    new_explanations = [
+        suggest_new_feature_importance(explanation, feature_index)
+        for feature_index in explanation.remaining_features
+    ]
+    return new_explanations
+
+
+def get_key_from_importances(feature_importance):
+    return tuple(sorted(feature_importance.keys()))
+
+
+def score_explanations(model: torch.nn.Module, full_input_val: float, input_ids: torch.Tensor, explanations: list[Explanation], target_ids: torch.Tensor, device: str | torch.device, word_map: dict[int, list[int]] = None, baseline: bool = False, batch_size: int = 1024):
+    complete_explanations = [explanation for explanation in explanations if explanation.complete]
+    incomplete_explanations = [explanation for explanation in explanations if not explanation.complete]
+    model_pass_combinations = list(set(get_key_from_importances(explanation.feature_importances) for explanation in incomplete_explanations))
+    combination_to_score = {}
+    model_inputs = torch.cat([mask_input(input_ids, combination, word_map) for combination in model_pass_combinations], dim=0)
+    preds = get_prediction(
+        model=model,
+        input_ids=model_inputs,
+        target_ids=target_ids,
+        device=device,
+        batch_size=1024
+    )
+    scores = full_input_val - preds if not baseline else preds - full_input_val
+    for combination, score in zip(model_pass_combinations, scores):
+        combination_to_score[combination] = score.item()
+    
+    new_explanations = []
+    for explanation in explanations:
+        key = get_key_from_importances(explanation.feature_importances)
+        new_explanation = Explanation(
+            feature_importances=explanation.feature_importances.copy(),
+            remaining_features=explanation.remaining_features.copy(),
+            non_cumulative_score=explanation.cumulative_score,
+            cumulative_score=explanation.previous_score + combination_to_score[key],
+            previous_score=explanation.previous_score,
+            descending=explanation.descending,
+            complete=len(explanation.remaining_features) == 0
+        )
+        new_explanations.append(new_explanation)
+    return new_explanations + complete_explanations
+
+
+def approx_pertubation_solver_callable(
+        input_ids: torch.Tensor,
+        target_ids: torch.Tensor,
+        device: str | torch.device,
+        model: torch.nn.Module,
+        beam_size: Optional[int] = 5,
+        word_map: dict[int, list[int]] = None,
+        batch_size: int = 1024,
+        bos_token_id : int | None = None,
+        eos_token_id : int | None = None,
+        
+    ) -> torch.Tensor:
+        
+        assert input_ids.shape[0] == 1, "Only one input at a time is supported"
+
+        full_input_score = get_prediction(
+            model=model,
+            input_ids=input_ids,
+            target_ids=target_ids,
+            device=device,
+            batch_size=batch_size
+            )
+            
+        has_cls, has_eos = (input_ids[0, 0].item() == bos_token_id), (input_ids[0, -1].item() == eos_token_id)
+        if word_map is not None:
+            num_features = len(word_map) - has_cls - has_eos
+        else:
+            num_features = input_ids.shape[1] - has_cls - has_eos
+
+        token_range = torch.arange(0 + has_cls, num_features + has_cls)
+        
+        descending_beam = [
+            Explanation(
+                feature_importances={},
+                remaining_features=token_range.tolist(),
+                previous_score=0,
+                cumulative_score=0,
+                non_cumulative_score=0,
+                complete=False,
+                descending=True,
+            )
+        ]
+        ascending_beam = [
+            Explanation(
+                feature_importances={},
+                remaining_features=token_range.tolist(),
+                previous_score=0,
+                cumulative_score=0,
+                non_cumulative_score=0,
+                complete=False,
+                descending=False,
+            )
+        ]
+
+        max_necessary_passes = len(ascending_beam[0].remaining_features)
+ 
+        for _ in range(max_necessary_passes):
+            total_beam = descending_beam + ascending_beam
+            explanations_to_score = []
+            for explanation in total_beam:
+                explanations_to_score += extend_explanation(explanation)
+            new_proposed_explanations = score_explanations(full_input_score, input_ids, explanations_to_score, target_ids, device, word_map=word_map)
+            ascending_split_index = next(i for i, e in enumerate(new_proposed_explanations) if e.descending == False)
+            descending_beam, ascending_beam = new_proposed_explanations[:ascending_split_index], new_proposed_explanations[ascending_split_index:]
+            new_proposed_descending_explanations = sorted(descending_beam, key=lambda x: x.cumulative_score, reverse=True)
+            new_proposed_ascending_explanations = sorted(ascending_beam, key=lambda x: x.cumulative_score, reverse=False)
+            if beam_size is not None:
+                descending_beam = new_proposed_descending_explanations[:beam_size]
+                ascending_beam = new_proposed_ascending_explanations[:beam_size]
+            else:
+                descending_beam = new_proposed_descending_explanations
+                ascending_beam = new_proposed_ascending_explanations
+
+            total_beam = descending_beam + ascending_beam
+
+        best_descending_explanation = descending_beam[0]
+        best_ascending_explanation = ascending_beam[0]
+            
+        descending_attributions = torch.zeros(has_cls + len(best_descending_explanation.feature_importances) + has_eos)
+        for feature_index, importance in best_descending_explanation.feature_importances.items():
+            descending_attributions[feature_index] = importance
+
+        ascending_attributions = torch.zeros(has_cls + len(best_ascending_explanation.feature_importances) + has_eos)
+        for feature_index, importance in best_ascending_explanation.feature_importances.items():
+            ascending_attributions[feature_index] = importance
+
+        return descending_attributions, ascending_attributions
+
+
+def calculate_aopc_for_attributions(
+        model: torch.nn.Module,
+        input_ids: torch.Tensor,
+        target_label: int,
+        attributions: torch.Tensor | list[float],
+        device: str | torch.device,
+        word_map: Optional[torch.Tensor | list[int]] = None,
+        descending: bool = True,
+        bos_token_id: int | None = None,
+        eos_token_id: int | None = None,
+        mask_token_id: int | None = None,
+    ):
+        input_ids = input_ids.to(device)
+        full_output = (
+            model(input_ids)
+            .logits.softmax(1)
+            .squeeze(0)
+            .cpu()[target_label]
+            .item()
+        )
+
+        has_bos = input_ids[0, 0].item() == bos_token_id
+        has_eos = input_ids[0, -1].item() == eos_token_id
+
+        tokens_start = 0 + has_bos
+        tokens_end = -1 if has_eos else len(input_ids[0])
+
+        attributions = attributions[
+            tokens_start:tokens_end
+        ]
+        ranking = (
+            torch.argsort(attributions, descending=True) + has_bos
+        )
+        permutation_input_ids = input_ids.clone()
+
+        if not descending:
+            ranking = ranking.flip(0)
+
+        aopc = 0
+        for entry in ranking:
+            if word_map is not None:
+                token_indices = word_map[entry.item()]
+            else:
+                token_indices = entry.item()
+
+            permutation_input_ids[:, token_indices] = mask_token_id
+            aopc += (
+                full_output
+                - model(permutation_input_ids)
+                .logits.softmax(1)
+                .squeeze(0)
+                .cpu()[target_label]
+                .item()
+            )
+
+        aopc /= len(ranking)
+    
+        return aopc
+
+
+def get_bounds(
+        model: torch.nn.Module,
+        input_ids: torch.Tensor,
+        target_label: int,
+        device: str | torch.device,
+        word_map: Optional[torch.Tensor | list[int]] = None,
+        normalization: typing.Literal["exact", "approx"] = "approx",
+        beam_size: Optional[int] = 5,
+        eos_token_id: int | None = None,
+        bos_token_id: int | None = None,
+        mask_token_id: int | None = None,
+):
+    """
+    Computes the approximate or exact normalization bounds for a given input.
+    """
+    
+    if normalization == "approx":
+        upper_bound_order, lower_bound_order = approx_pertubation_solver_callable(
+            input_ids=input_ids,
+            target_ids=target_label,
+            device=device,
+            model=model,
+            beam_size=beam_size,
+            word_map=word_map,
+            bos_token_id=bos_token_id,
+            eos_token_id=eos_token_id,
+            batch_size=1024,
+        )
+        upper_bound = calculate_aopc_for_attributions(
+            model=model,
+            input_ids=input_ids,
+            target_label=target_label,
+            attributions=upper_bound_order,
+            word_map=word_map,
+            bos_token_id=bos_token_id,
+            eos_token_id=eos_token_id,
+            mask_token_id=mask_token_id,
+        )
+        lower_bound = calculate_aopc_for_attributions(
+            model=model,
+            input_ids=input_ids,
+            target_label=target_label,
+            attributions=lower_bound_order,
+            word_map=word_map,
+            bos_token_id=bos_token_id,
+            eos_token_id=eos_token_id,
+            mask_token_id=mask_token_id,
+            descending=False,
+        )
+    elif normalization == "exact":
+        if input_ids.shape[-1] > 12:
+            raise ValueError("Exact normalization is only supported for inputs with a maximum length of 12 tokens.")
+        lower_bound, upper_bound = get_exact_bounds(
+            model=model,
+            device=device,
+            input_ids=input_ids,
+            target_ids=target_label,
+            eos_token_id=eos_token_id,
+            bos_token_id=bos_token_id,
+            mask_token_id=mask_token_id,
+            pad_token_id=mask_token_id,
+            word_map=word_map,
+            batch_size=1024,
+            )
+    return lower_bound, upper_bound
+
 class AopcSolver:
 
-    def get_exact_bounds(self, input_ids: torch.Tensor, word_map: Optional[dict[int, list[int]]]):
-        perturb_dataset = PerturbDataset(input_ids, self.eos_token_id, self.bos_token_id, self.mask_token_id, self.pad_token_id, word_map)
-        perturb_dataloader = torch.utils.data.DataLoader(
-            perturb_dataset,
-            batch_size=self.batch_size,
-            num_workers=0,
-        )
-        positive_logit_list = []
-        negative_logit_list = []
-        id_list = []
-        token_key_list = []
-        word_key_list = []
 
-        has_eos, has_bos = (input_ids[0, -1].item() == self.eos_token_id), (input_ids[0, 0].item() == self.bos_token_id)
-        num_features = len(word_map) if word_map else input_ids.shape[-1]
-
-        with torch.no_grad():
-            for ids, token_key, word_key, input_ids_batch in perturb_dataloader:
-                logits = self.model(
-                    input_ids_batch.to(self.device)
-                ).logits.cpu()
-                positive_logit_list.extend(logits[:, 1].tolist())
-                negative_logit_list.extend(logits[:, 0].tolist())
-                id_list.extend(ids)
-                token_key_list.extend(token_key)
-                word_key_list.extend(word_key)
-
-        df = pd.DataFrame(
-            {
-                "id": id_list,
-                "token_key": token_key_list,
-                "word_key": word_key_list,
-                "positive_logit": positive_logit_list,
-                "negative_logit": negative_logit_list,
-            }
-        )
-
-        lower, upper = get_bounds_from_permutations(df, has_eos=has_eos, has_bos=has_bos)
-        return lower, upper
-
-
-    def mask_input(self, x, value_indices, word_map=None):
-        mask = torch.ones_like(x)
-        try:
-            if word_map is not None:
-                transformed_indices = [
-                    word_map[i] for i in value_indices
-                ]
-                value_indices = [item for sublist in transformed_indices for item in sublist]
-        except KeyError:
-            pass
-        mask[:,value_indices] = 0
-        return torch.where(
-            mask == 1,
-            x, 
-            torch.tensor(self.mask_token_id)
-        )
-    
-    @torch.no_grad()
-    def get_prediction(self, input_ids, target_ids, device):
-
-        temp_dataloader = torch.utils.data.DataLoader(
-            input_ids,
-            batch_size=self.batch_size,
-            shuffle=False,
-            num_workers=0,
-        )
-
-        outs = []
-
-        for input_ids_batch in temp_dataloader:
-            input_ids_batch = input_ids_batch.to(device)
-            with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=True):
-                y_pred = (
-                    self.model(input_ids_batch).logits
-                )  # [num_classes]
-                out = torch.nn.functional.softmax(y_pred, dim=1)[:, target_ids].detach().cpu()
-                outs.append(out)
-        return torch.cat(outs, dim=0)
-
-
-    def suggest_new_feature_importance(self, explanation: Explanation, feature_index: int):
-        new_importance = len(explanation.remaining_features) - 1 if explanation.descending else len(explanation.feature_importances)
-        new_feature_importances = explanation.feature_importances.copy()
-        new_feature_importances[feature_index] = new_importance
-        new_remaining_features = explanation.remaining_features.copy()
-        new_remaining_features.remove(feature_index)
-        return Explanation(
-            feature_importances=new_feature_importances,
-            remaining_features=new_remaining_features,
-            previous_score=explanation.cumulative_score,
-            cumulative_score=None,
-            non_cumulative_score=0,
-            descending=explanation.descending,
-            complete=False,
-        )
-
-
-    def extend_explanation(self, explanation: Explanation):
-        # For an explanation, we propose N new explanations where N is the number of remaining features
-        # For each new explanation, we propose that the new feature importance is the current iteration,
-        # such that for any new feature, their importance decreases or increases by 1 each iteration
-        if explanation.complete:
-            return [explanation]
-        new_explanations = [
-            self.suggest_new_feature_importance(explanation, feature_index)
-            for feature_index in explanation.remaining_features
-        ]
-        return new_explanations
+    def __init__(
+        self,
+        model_id: str,
+        batch_size: int = 1024,
+        device: str | torch.device = "cuda",
+    ):
+        self.model = AutoModelForSequenceClassification.from_pretrained(model_id).to(device)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_id)
+        self.mask_token_id = self.tokenizer.mask_token_id or self.tokenizer.eos_token_id
+        self.pad_token_id = self.tokenizer.pad_token_id or self.tokenizer.eos_token_id
+        self.bos_token_id = self.tokenizer.bos_token_id or self.tokenizer.cls_token_id
+        self.eos_token_id = self.tokenizer.eos_token_id or self.tokenizer.sep_token_id
+        self.batch_size = batch_size
+        self.device = device
     
 
-    def get_key_from_importances(self, feature_importance):
-        return tuple(sorted(feature_importance.keys()))
+    class AopcReturnObject(pydantic.BaseModel):
+        aopc: float
+        upper_bound: Optional[float]
+        lower_bound: Optional[float]
+        normalized_aopc: Optional[float]
 
-
-    def score_explanations(self, full_input_val: float, input_ids: torch.Tensor, explanations: list[Explanation], target_ids: torch.Tensor, device: str | torch.device, word_map: dict[int, list[int]] = None, baseline: bool = False):
-        complete_explanations = [explanation for explanation in explanations if explanation.complete]
-        incomplete_explanations = [explanation for explanation in explanations if not explanation.complete]
-        model_pass_combinations = list(set(self.get_key_from_importances(explanation.feature_importances) for explanation in incomplete_explanations))
-        combination_to_score = {}
-        model_inputs = torch.cat([self.mask_input(input_ids, combination, word_map) for combination in model_pass_combinations], dim=0)
-        preds = self.get_prediction(model_inputs, target_ids, device)
-        scores = full_input_val - preds if not baseline else preds - full_input_val
-        for combination, score in zip(model_pass_combinations, scores):
-            combination_to_score[combination] = score.item()
+    def get_aopc(
+            self,
+            input_ids: torch.Tensor,
+            target_label: int,
+            attributions: torch.Tensor | list[float],
+            word_map: Optional[torch.Tensor | list[int]] = None,
+            normalization: typing.Optional[typing.Literal["exact", "approx"]] = "approx",
+            beam_size: Optional[int] = 5,
+    ):
+        """
+        Calculate the AOPC for a given input, target label, and attributions.
+        Optionally, calculate the normalized AOPC using either exact or approximate normalization.
+        """
         
-        new_explanations = []
-        for explanation in explanations:
-            key = self.get_key_from_importances(explanation.feature_importances)
-            new_explanation = Explanation(
-                feature_importances=explanation.feature_importances.copy(),
-                remaining_features=explanation.remaining_features.copy(),
-                non_cumulative_score=explanation.cumulative_score,
-                cumulative_score=explanation.previous_score + combination_to_score[key],
-                previous_score=explanation.previous_score,
-                descending=explanat...
+        base_aopc_desc = self.calculate_aopc_for_attributions(
+            input_ids=input_ids,
+            target_label=target_label,
+            attributions=attributions,
+            word_map=word_map,
+        )
+        base_aopc_asc = self.calculate_aopc_for_attributions(
+            input_ids=input_ids,
+            target_label=target_label,
+            attributions=attributions,
+            word_map=word_map,
+            descending=False,
+        )
+        desc, asc = {"aopc": base_aopc_desc}, {"aopc": base_aopc_asc}
+        if normalization is not None:
+            upper_bound, lower_bound = self.get_bounds(
+                input_ids=input_ids,
+                target_label=target_label,
+                word_map=word_map,
+                normalization=normalization,
+                beam_size=beam_size
+            )
+            desc["upper_bound"] = upper_bound
+            desc["lower_bound"] = lower_bound
+            desc["normalized_aopc"] = (base_aopc_desc - lower_bound) / (upper_bound - lower_bound)
+            asc["upper_bound"] = upper_bound
+            asc["lower_bound"] = lower_bound
+            asc["normalized_aopc"] = (base_aopc_asc - lower_bound) / (upper_bound - lower_bound)
+        return self.AopcReturnObject(**desc), self.AopcReturnObject(**asc)
+    
+    def get_suggested_beam_size(self, input_ids: torch.Tensor, target_label: torch.Tensor | int, tolerance: float = 0.01, beam_sizes: list[int] = [1, 5, 10, 20, 50]):
+        """
+        Applies a tolerance based convergence check to find the optimal beam size for the approximate normalization method.
+        The method fundamentally does:
+        1. For each beam size, it applies the beam search method to calculate the upper and lower bounds.
+        2. If the difference between the current upper and lower bounds and the previous upper and lower bounds are less than the tolerance for two consecutive beam sizes, the method converges.
+        3. If the method converges, it returns the beam size that converged.
+        4. If the method does not converge, it returns the last beam size.
+        """
+
+        prev_upper, prev_lower = 0.5, 0.5
+        converge_counter = 0
+        for beam_size in beam_sizes:
+            avg_upper, avg_lower = 0, 0
+            for i in range(0, input_ids.shape[0]):
+                input_ids_ind = input_ids[i].unsqueeze(0)
+                lower_bound, upper_bound = self.get_bounds(
+                    input_ids=input_ids_ind,
+                    target_label=target_label[i],
+                    normalization="approx",
+                    beam_size=beam_size,
+                )
+                avg_upper += upper_bound
+                avg_lower += lower_bound
+            
+            upper_bound = avg_upper / input_ids.shape[0]
+            lower_bound = avg_lower / input_ids.shape[0]
+            if abs(upper_bound - prev_upper) / prev_upper < tolerance and abs(lower_bound - prev_lower) / prev_lower < tolerance:
+                if converge_counter == 1:
+                    print(f"Beam size search converged at beam size {converged_beam_size}.")
+                    print(f"Current upper bound: {upper_bound}, selected, previous upper bound: {prev_upper}")
+                    print(f"Current lower bound: {lower_bound}, selected, previous lower bound: {prev_lower}")
+                    print(f"Tolerance: {tolerance*100}%")
+                    return converged_beam_size
+                else:
+                    converged_beam_size = beam_size
+                    converge_counter += 1
+            else:
+                converge_counter = 0
+                prev_upper, prev_lower = upper_bound, lower_bound
+        print(f"Beam size search did not converge. Current upper bound: {upper_bound}, previous upper bound: {prev_upper}")
+        return beam_sizes[-1]
