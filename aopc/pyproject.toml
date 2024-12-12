@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "aopc"
+version = "0.1.0"
+description = ""
+authors = ["Joakim Edin <je@corti.ai>", "Casper Christensen <clu@corti.ai>", "Andreas G. Motzfeldt <amo@corti.ai>"]
+readme = "README.md"
+
+packages = [{ include = "aopc" }]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pydantic = "^2.7"
+pydantic-settings = "^2.2.1"
+torch = "<2.3.0"
+transformers = "^4.41.2"
+datasets = "^2.20.0"
+loguru = "^0.7.3"
+numba = "^0.60.0"
+numpy = "<2.0.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

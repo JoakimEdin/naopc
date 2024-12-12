@@ -1,8 +1,7 @@
 import pytest
 import torch
 from datasets import Dataset, DatasetDict
-from aopc import Aopc
-from pytest_lazyfixture import lazy_fixture
+from aopc import Aopc, AopcResult
 
 
 @pytest.fixture(scope="module")
@@ -35,56 +34,200 @@ def sample_dataset_dict(sample_dataset):
 
 
 @pytest.mark.parametrize(
-    "input_data,word_map,normalization",
+    "input_data,word_map,normalization,beam_size",
     [
-        (lazy_fixture("sample_input_row"), None, None),
-        (lazy_fixture("sample_input_row"), None, "approx"),
-        (lazy_fixture("sample_input_row"), None, "exact"),
         (
-            lazy_fixture("sample_input_row"),
-            torch.tensor([0, 1, 2, 3, 4, 5, 6]),
+            {
+                "input_ids": torch.tensor([[101, 2009, 2003, 1037, 2204, 2154, 102]]),
+                "target_label": 1,
+                "attributions": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
+            },
+            None,
+            None,
+            None,
+        ),
+        (
+            {
+                "input_ids": torch.tensor([[101, 2009, 2003, 1037, 2204, 2154, 102]]),
+                "target_label": 1,
+                "attributions": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
+            },
+            None,
             "approx",
+            None,
+        ),
+        (
+            {
+                "input_ids": torch.tensor([[101, 2009, 2003, 1037, 2204, 2154, 102]]),
+                "target_label": 1,
+                "attributions": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
+            },
+            None,
+            "exact",
+            None,
+        ),
+        (
+            {
+                "input_ids": torch.tensor([[101, 2009, 2003, 1037, 2204, 2154, 102]]),
+                "target_label": 1,
+                "attributions": [0.1, 0.2, 0.3, 0.4],
+            },
+            {1: [1], 2: [2, 3], 3: [4], 4: [5]},
+            "approx",
+            None,
+        ),
+        (
+            {
+                "input_ids": torch.tensor([[101, 2009, 2003, 1037, 2204, 2154, 102]]),
+                "target_label": 1,
+                "attributions": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
+            },
+            None,
+            "approx",
+            2,
         ),
     ],
 )
-def test_evaluate_row(aopc_instance, input_data, word_map, normalization):
-    result = aopc_instance.evaluate(input_data, word_map, normalization)
-    assert isinstance(result, tuple)
-    assert len(result) == 3
+def test_evaluate_row(aopc_instance, input_data, word_map, normalization, beam_size):
+    result = aopc_instance.evaluate(
+        input_data, word_map=word_map, normalization=normalization, beam_size=beam_size
+    )
+    assert isinstance(result, dict)
+    assert AopcResult(**result)
 
 
 @pytest.mark.parametrize(
-    "input_data,word_map,normalization",
+    "input_data,word_map,normalization,beam_size",
     [
-        (lazy_fixture("sample_input_row"), None, None),
-        (lazy_fixture("sample_dataset"), None, "approx"),
-        (lazy_fixture("sample_dataset"), None, "exact"),
-        (lazy_fixture("sample_dataset"), [[0, 1, 2, 3, 4, 5, 6]], "approx"),
+        (
+            Dataset.from_dict(
+                {
+                    "input_ids": [[101, 2009, 2003, 1037, 2204, 2154, 102]],
+                    "target_label": [1],
+                    "attributions": [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]],
+                }
+            ),
+            None,
+            None,
+            None,
+        ),
+        (
+            Dataset.from_dict(
+                {
+                    "input_ids": [[101, 2009, 2003, 1037, 2204, 2154, 102]],
+                    "target_label": [1],
+                    "attributions": [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]],
+                }
+            ),
+            None,
+            "approx",
+            None,
+        ),
+        (
+            Dataset.from_dict(
+                {
+                    "input_ids": [[101, 2009, 2003, 1037, 2204, 2154, 102]],
+                    "target_label": [1],
+                    "attributions": [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]],
+                }
+            ),
+            None,
+            "exact",
+            None,
+        ),
+        (
+            Dataset.from_dict(
+                {
+                    "input_ids": [[101, 2009, 2003, 1037, 2204, 2154, 102]],
+                    "target_label": [1],
+                    "attributions": [[0.1, 0.2, 0.3, 0.4]],
+                }
+            ),
+            {1: [1], 2: [2, 3], 3: [4], 4: [5]},
+            "approx",
+            None,
+        ),
+        (
+            Dataset.from_dict(
+                {
+                    "input_ids": [[101, 2009, 2003, 1037, 2204, 2154, 102]],
+                    "target_label": [1],
+                    "attributions": [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]],
+                }
+            ),
+            None,
+            "approx",
+            2,
+        ),
     ],
 )
-def test_evaluate_dataset(aopc_instance, input_data, word_map, normalization):
-    result = aopc_instance.evaluate(input_data, word_map, normalization)
+def test_evaluate_dataset(
+    aopc_instance, input_data, word_map, normalization, beam_size
+):
+    result = aopc_instance.evaluate(
+        input_data, word_map=word_map, normalization=normalization, beam_size=beam_size
+    )
     assert isinstance(result, Dataset)
-    assert "input_ids" not in result.column_names
+    assert AopcResult(**result[0])
 
 
 @pytest.mark.parametrize(
-    "input_data,word_map,normalization",
+    "input_data,word_map,normalization,beam_size",
     [
-        (lazy_fixture("sample_input_row"), None, None),
-        (lazy_fixture("sample_dataset_dict"), None, "approx"),
-        (lazy_fixture("sample_dataset_dict"), None, "exact"),
         (
-            lazy_fixture("sample_dataset_dict"),
-            {"train": [[0, 1, 2, 3, 4, 5, 6]]},
+            DatasetDict(
+                {
+                    "train": Dataset.from_dict(
+                        {
+                            "input_ids": [[101, 2009, 2003, 1037, 2204, 2154, 102]],
+                            "target_label": [1],
+                            "attributions": [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]],
+                        }
+                    ),
+                    "test": Dataset.from_dict(
+                        {
+                            "input_ids": [[101, 2009, 2003, 1037, 2204, 2154, 102]],
+                            "target_label": [1],
+                            "attributions": [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]],
+                        }
+                    ),
+                }
+            ),
+            None,
+            None,
+            None,
+        ),
+        (
+            DatasetDict(
+                {
+                    "train": Dataset.from_dict(
+                        {
+                            "input_ids": [[101, 2009, 2003, 1037, 2204, 2154, 102]],
+                            "target_label": [1],
+                            "attributions": [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]],
+                        }
+                    ),
+                    "test": Dataset.from_dict(
+                        {
+                            "input_ids": [[101, 2009, 2003, 1037, 2204, 2154, 102]],
+                            "target_label": [1],
+                            "attributions": [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]],
+                        }
+                    ),
+                }
+            ),
+            None,
             "approx",
+            None,
         ),
     ],
 )
 def test_evaluate_dataset_dict(
-    aopc_instance: Aopc, input_data, word_map, normalization
+    aopc_instance, input_data, word_map, normalization, beam_size
 ):
-    result = aopc_instance.evaluate(input_data, word_map, normalization)
+    result = aopc_instance.evaluate(
+        input_data, word_map=word_map, normalization=normalization, beam_size=beam_size
+    )
     assert isinstance(result, DatasetDict)
     for split in result:
-        assert "input_ids" not in result[split].column_names
+        assert AopcResult(**result[split][0])

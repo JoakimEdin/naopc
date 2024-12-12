@@ -10,6 +10,11 @@ help:  ## Display this help
 install:  ## Install the package for development along with pre-commit hooks.
 	poetry install --with dev --with test --with feat-attr
 
+.PHONY: test
+test:  ## Run the tests.
+	poetry run pytest tests/ 
+# --cov=src --cov-report=xml --cov-report=html --junitxml=test-output.xml
+
 .PHONY: clean
 clean:  ## Clean up the project directory removing __pycache__, .coverage, and the install stamp file.
 	find . -type d -name "__pycache__" | xargs rm -rf {};

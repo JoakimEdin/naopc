@@ -1,22 +1,15 @@
 [tool.poetry]
-name = "faithfulness"
+name = "naopc"
 version = "0.1.0"
 description = ""
 authors = ["Joakim Edin <je@corti.ai>", "Casper Christensen <clu@corti.ai>", "Andreas G. Motzfeldt <amo@corti.ai>"]
 readme = "README.md"
 
-packages = [
-    {include="aopc"}
-]
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.10"
-torch = "<2.3.0"
-transformers = "^4.41.2"
-datasets = "^2.20.0"
-loguru = "^0.7.3"
-numba = "^0.60.0"
-numpy = "^2.0.1"
+aopc = {path = "aopc", develop = true}
 
 
 [tool.poetry.group.feat-attr]
@@ -42,7 +35,6 @@ optional = true
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.3.4"
-pytest-lazy-fixture="^0.6.3"
 pytest-cov = "^3.0.0"
 
 
