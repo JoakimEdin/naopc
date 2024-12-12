@@ -67,6 +67,9 @@ class Aopc:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         logger.info(f"Using device: {self.device}")
 
+        self.model.eval()
+        self.model.to(self.device)
+
     def _get_bounds(
             self,
             input_ids: torch.Tensor | None,
@@ -76,7 +79,7 @@ class Aopc:
             normalization: typing.Literal["exact", "approx"] | None = "approx",
             beam_size: int | None = None,
     ) -> tuple[float, float]:
-        input_ids = self._prepare_input(input_ids, text)
+        input_ids, _ = self._prepare_input(input_ids, text)
         lower, upper = get_bounds(
             input_ids=input_ids,
             target_label=target_label,
@@ -91,12 +94,15 @@ class Aopc:
         )
         return {"lower_bound": lower, "upper_bound": upper}
     
-    def _prepare_input(self, input_ids: torch.Tensor | None, text: str | None):
+    def _prepare_input(self, input_ids: torch.Tensor | None, text: str | None, attributions: torch.Tensor | list[float] | None = None) -> torch.Tensor:
         if input_ids is None:
             input_ids = self.tokenizer(text, return_tensors="pt")["input_ids"]
-        if isinstance(input_ids, list[int]):
+        if isinstance(input_ids, list):
             input_ids = torch.tensor(input_ids).unsqueeze(0)
-        return input_ids
+        if attributions:
+            if isinstance(attributions, list):
+                attributions = torch.tensor(attributions)
+        return input_ids.to(self.device), attributions
 
     def _calculate_aopc(
         self,
@@ -108,7 +114,7 @@ class Aopc:
         beam_size: int | None = None,
         normalization: typing.Literal["exact", "approx"] | None = "approx",
     ) -> tuple[float, float, float]:
-        input_ids = self._prepare_input(input_ids, text)
+        input_ids, attributions = self._prepare_input(input_ids, text, attributions)
         if normalization:
             lower, upper = get_bounds(
                 input_ids=input_ids,
@@ -152,6 +158,7 @@ class Aopc:
             asc_aopc=asc_aopc,
             normalized_desc_aopc=(desc_aopc - lower) / (upper - lower),
             normalized_asc_aopc=(asc_aopc - lower) / (upper - lower),
+            normalization_type=normalization,
         )
         
     
@@ -162,39 +169,46 @@ class Aopc:
             normalization: typing.Literal["exact", "approx"] | None = "approx",
     ) -> tuple[float, float]:
         try:
-            x = InputModel(**row, beam_size=beam_size, normalization=normalization)
+            x = {**row, "beam_size": beam_size, "normalization": normalization}
+            #x = InputModel(**row, beam_size=beam_size, normalization=normalization)
         except pydantic.ValidationError as e:
             print(e)
             raise ValueError(
                 f"Error validating input. Expected input keys: {InputModel.model_fields} but got {list(row.keys())}"
             )
         return self._get_bounds(
-            **x.dict(),
+            input_ids=x["input_ids"],
+            text=x["text"],
+            target_label=x["target_label"],
+            word_map=x.get("word_map"),
+            normalization=x["normalization"],
+            beam_size=x["beam_size"],
         )
         
 
-    @staticmethod
     def evaluate_row(
+        self,
         row: dict[str, typing.Any],
-        word_map: torch.Tensor | list[int] | None = None,
         normalization: typing.Literal["exact", "approx"] | None = "approx",
         beam_size: int | None = None,
-    ) -> tuple[float, float, float]:
+    ) -> dict[str, float]:
         try:
-            x = InputModel(**row)
+            x = {**row, "beam_size": beam_size, "normalization": normalization}
+            #x = InputModel(**row)
         except pydantic.ValidationError as e:
             print(e)
             raise ValueError(
                 f"Error validating input. Expected input keys: {InputModel.model_fields}"
             )
-        return Aopc._calculate_aopc(
-            input_ids=x.input_ids,
-            attributions=x.attributions,
-            target_label=x.target_label,
-            word_map=word_map,
-            normalization=normalization,
-            beam_size=beam_size,
-        )
+        return self._calculate_aopc(
+            input_ids=x["input_ids"],
+            text=x["text"],
+            target_label=x["target_label"],
+            attributions=x["attributions"],
+            word_map=x.get("word_map"),
+            normalization=x["normalization"],
+            beam_size=x["beam_size"],
+        ).model_dump()
     
     def get_suggested_beam_size(
             self,
@@ -206,11 +220,11 @@ class Aopc:
         converge_counter = 0
         for beam_size in beam_sizes:
             map_fn = partial(self.get_bounds_for_row, beam_size=beam_size, normalization="approx")
-            dset = dset.map(
-                map_fn, remove_columns=dset.column_names, desc=f"Estimating AOPC for beam size: {beam_size}", **kwargs
+            dset_bounds = dset.map(
+                map_fn, desc=f"Estimating AOPC for beam size: {beam_size}", **kwargs
             )
-            avg_upper = dset["upper_bound"].mean()
-            avg_lower = dset["lower_bound"].mean()
+            avg_upper = torch.tensor(dset_bounds["upper_bound"]).mean().item()
+            avg_lower = torch.tensor(dset_bounds["lower_bound"]).mean().item()
             if abs(avg_upper - prev_upper) / prev_upper < 0.01 and abs(avg_lower - prev_lower) / prev_lower < 0.01:
                 if converge_counter == 1:
                     logger.info(f"Beam size search converged at beam size {converged_beam_size}.")
@@ -231,13 +245,12 @@ class Aopc:
     def evaluate_dset(
         self,
         dset: datasets.Dataset,
-        word_map: torch.Tensor | list[int] | None = None,
         normalization: typing.Literal["exact", "approx"] | None = "approx",
         beam_size: int | None = 5,
         **kwargs: typing.Any,
     ) -> datasets.Dataset:
         """Translating a dataset."""
-        fn = partial(self.evaluate_row, word_map=word_map, normalization=normalization, beam_size=beam_size)
+        fn = partial(self.evaluate_row, normalization=normalization, beam_size=beam_size)
         return dset.map(
             fn, remove_columns=dset.column_names, desc="Estimating AOPC...", **kwargs
         )
@@ -245,7 +258,6 @@ class Aopc:
     def evaluate(
         self,
         data: DatasetTypes,
-        word_map: WordMap,
         normalization: NormalizationType,
         beam_size: int | None = 5,
         map_kwargs: dict | None = None,
@@ -253,16 +265,16 @@ class Aopc:
         """Translate a row, dataset or dataset dict."""
         map_kwargs = map_kwargs or {}
         if isinstance(data, datasets.Dataset):
-            return self.evaluate_dset(data, word_map, normalization, beam_size, **map_kwargs)
+            return self.evaluate_dset(data, normalization, beam_size, **map_kwargs)
         if isinstance(data, datasets.DatasetDict):
             return datasets.DatasetDict(
                 {
-                    k: self.evaluate_dset(v, word_map, normalization, beam_size, **map_kwargs)
+                    k: self.evaluate_dset(v, normalization, beam_size, **map_kwargs)
                     for k, v in data.items()
                 }
             )  # type: ignore
         if isinstance(data, dict):
-            return self.evaluate_row(data, word_map, normalization, beam_size)
+            return self.evaluate_row(data, normalization, beam_size)
 
         raise TypeError(f"Cannot evaluate input of type `{type(x)}`")
 
@@ -286,6 +298,7 @@ if __name__ == "__main__":
         }
     )
     print(dset)
-    beam_size = aopc.get_suggested_beam_size(dset)
-    result = aopc.evaluate_dset(dset, beam_size=beam_size, normalization="approx")
+    #beam_size = aopc.get_suggested_beam_size(dset)
+    result = aopc.evaluate_dset(dset, normalization="exact")
+    #result = aopc.evaluate_dset(dset, beam_size=5, normalization="approx")
     print(result)

@@ -303,7 +303,7 @@ def get_prediction(model: torch.nn.Module, input_ids: torch.Tensor, target_ids: 
     return torch.cat(outs, dim=0)
 
 
-def suggest_new_feature_importance(self, explanation: Explanation, feature_index: int):
+def suggest_new_feature_importance(explanation: Explanation, feature_index: int):
     new_importance = len(explanation.remaining_features) - 1 if explanation.descending else len(explanation.feature_importances)
     new_feature_importances = explanation.feature_importances.copy()
     new_feature_importances[feature_index] = new_importance
@@ -337,18 +337,18 @@ def get_key_from_importances(feature_importance):
     return tuple(sorted(feature_importance.keys()))
 
 
-def score_explanations(model: torch.nn.Module, full_input_val: float, input_ids: torch.Tensor, explanations: list[Explanation], target_ids: torch.Tensor, device: str | torch.device, word_map: dict[int, list[int]] = None, baseline: bool = False, batch_size: int = 1024):
+def score_explanations(model: torch.nn.Module, full_input_val: float, input_ids: torch.Tensor, explanations: list[Explanation], target_ids: torch.Tensor, mask_token_id: int, device: str | torch.device, word_map: dict[int, list[int]] = None, baseline: bool = False, batch_size: int = 1024):
     complete_explanations = [explanation for explanation in explanations if explanation.complete]
     incomplete_explanations = [explanation for explanation in explanations if not explanation.complete]
     model_pass_combinations = list(set(get_key_from_importances(explanation.feature_importances) for explanation in incomplete_explanations))
     combination_to_score = {}
-    model_inputs = torch.cat([mask_input(input_ids, combination, word_map) for combination in model_pass_combinations], dim=0)
+    model_inputs = torch.cat([mask_input(x=input_ids, value_indices=combination, word_map=word_map, mask_token_id=mask_token_id) for combination in model_pass_combinations], dim=0)
     preds = get_prediction(
         model=model,
         input_ids=model_inputs,
         target_ids=target_ids,
         device=device,
-        batch_size=1024
+        batch_size=batch_size
     )
     scores = full_input_val - preds if not baseline else preds - full_input_val
     for combination, score in zip(model_pass_combinations, scores):
@@ -380,6 +380,7 @@ def approx_pertubation_solver_callable(
         batch_size: int = 1024,
         bos_token_id : int | None = None,
         eos_token_id : int | None = None,
+        mask_token_id : int | None = None,
         
     ) -> torch.Tensor:
         
@@ -431,7 +432,17 @@ def approx_pertubation_solver_callable(
             explanations_to_score = []
             for explanation in total_beam:
                 explanations_to_score += extend_explanation(explanation)
-            new_proposed_explanations = score_explanations(full_input_score, input_ids, explanations_to_score, target_ids, device, word_map=word_map)
+            new_proposed_explanations = score_explanations(
+                model=model,
+                full_input_val=full_input_score,
+                input_ids=input_ids,
+                explanations=explanations_to_score,
+                target_ids=target_ids,
+                device=device,
+                word_map=word_map,
+                batch_size=batch_size,
+                mask_token_id=mask_token_id,
+            )
             ascending_split_index = next(i for i, e in enumerate(new_proposed_explanations) if e.descending == False)
             descending_beam, ascending_beam = new_proposed_explanations[:ascending_split_index], new_proposed_explanations[ascending_split_index:]
             new_proposed_descending_explanations = sorted(descending_beam, key=lambda x: x.cumulative_score, reverse=True)
@@ -530,6 +541,7 @@ def get_bounds(
         eos_token_id: int | None = None,
         bos_token_id: int | None = None,
         mask_token_id: int | None = None,
+        batch_size: int = 1024,
 ):
     """
     Computes the approximate or exact normalization bounds for a given input.
@@ -545,7 +557,8 @@ def get_bounds(
             word_map=word_map,
             bos_token_id=bos_token_id,
             eos_token_id=eos_token_id,
-            batch_size=1024,
+            mask_token_id=mask_token_id,
+            batch_size=batch_size,
         )
         upper_bound = calculate_aopc_for_attributions(
             model=model,
@@ -556,6 +569,7 @@ def get_bounds(
             bos_token_id=bos_token_id,
             eos_token_id=eos_token_id,
             mask_token_id=mask_token_id,
+            device=device,
         )
         lower_bound = calculate_aopc_for_attributions(
             model=model,
@@ -567,6 +581,7 @@ def get_bounds(
             eos_token_id=eos_token_id,
             mask_token_id=mask_token_id,
             descending=False,
+            device=device,
         )
     elif normalization == "exact":
         if input_ids.shape[-1] > 12:
@@ -581,7 +596,7 @@ def get_bounds(
             mask_token_id=mask_token_id,
             pad_token_id=mask_token_id,
             word_map=word_map,
-            batch_size=1024,
+            batch_size=batch_size,
             )
     return lower_bound, upper_bound
 
