@@ -9,6 +9,8 @@ model_names = [
     "VictorSanh/roberta-base-finetuned-yelp-polarity",
     "textattack/bert-base-uncased-imdb",
     "textattack/roberta-base-imdb",
+    "textattack/bert-base-uncased-SST-2",
+    "textattack/roberta-base-SST-2",
 ]
 
 model_dict = {
@@ -21,12 +23,6 @@ model_dict = {
 }
 
 # Updated custom colorblind-friendly palette with more distinguishable colors
-custom_palette = {
-    "BERT$_{\\text{Yelp}}$": "#4daf4a",
-    "RoBERTa$_{\\text{Yelp}}$": "#f781bf",
-    "BERT$_{\\text{IMDB}}$": "#377eb8",
-    "RoBERTa$_{\\text{IMDB}}$": "#ff7f00",
-}
 
 for dataset_name in dataset_names:
     dataframes = []
@@ -41,29 +37,27 @@ for dataset_name in dataset_names:
         dataframes.append(temp_df)
 
     df = pd.concat(dataframes)
-    sns.set_theme(style="whitegrid", context="paper", font_scale=1.5)
-    g = sns.histplot(
-        data=df, x="upper_limit", hue="model", kde=True, bins=30, palette=custom_palette
+    sns.set_theme(style="whitegrid", context="paper", font_scale=1.2, palette="colorblind")
+    plt.clf()
+    sns.violinplot(
+        data=df, y="upper_limit", x="model", color="orange"
     )
-    plt.xlabel("AOPC score")
-    plt.ylabel("Frequency")
-    plt.legend(title=None)
-    print(df.groupby("model")["upper_limit"].describe())
-    print(df.groupby("model")["lower_limit"].describe())
+    plt.ylabel("AOPC score")
+    # remove x label
+    plt.xlabel("")
     plt.tight_layout()
-    plt.xlim(-0.1, 1.1)
+    # plt.xlim(-0.1, 1.1)
 
     plt.savefig(f"figures/{dataset_name}_upper_limit.pdf", format="pdf")
 
     plt.clf()
 
-    g = sns.histplot(
-        data=df, x="lower_limit", hue="model", kde=True, bins=70, palette=custom_palette
+    g = sns.violinplot(
+        data=df, y="lower_limit", x="model", color="orange"
     )
-    plt.xlabel("AOPC score")
-    plt.ylabel("Frequency")
-    plt.xlim(-0.2, 0.5)
+    plt.ylabel("AOPC score")
+    plt.xlabel("")
     plt.tight_layout()
-    g.legend_.set_title(None)
 
     plt.savefig(f"figures/{dataset_name}_lower_limit.pdf", format="pdf")
+    plt.clf()
