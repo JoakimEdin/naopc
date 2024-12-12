@@ -13,6 +13,7 @@ from transformers import AutoTokenizer
 from src.evaluation.naopc_beam.bound_approximation_methods import (
     get_aopc_solver_callable,
 )
+from transformers import GPT2ForSequenceClassification, DistilBertForSequenceClassification
 from src.feature_attribution_methods.decompx.bert import BertForSequenceClassification
 from src.feature_attribution_methods.decompx.roberta import (
     RobertaForSequenceClassification,
@@ -28,6 +29,7 @@ def main(
     dataset_length: str = "short",
     explanation_attributions: Optional[str] = False,
     use_exact_limits: bool = False,
+    file_suffix: str = "",
 ):
     print("Running script with the following parameters:")
     print(f"Dataset: {dataset_name}")
@@ -56,13 +58,17 @@ def main(
         data_files=f"data/{dataset_name}_test_{dataset_length}.csv",
         split="train",
     )
+
+    if dataset_name == "snli":
+        dataset = dataset.map(lambda x: {"text": x["premise"] + " " + x["hypothesis"]})
+
     dataset = dataset.map(
         lambda x: {"input_ids": tokenizer(x["text"])["input_ids"]},
         batched=True,
     )
 
-    mask_token_id = tokenizer.mask_token_id
-    pad_token_id = tokenizer.pad_token_id
+
+    mask_token_id = tokenizer.mask_token_id if not "gpt2" in model_name else tokenizer.eos_token_id #220
     start_token_id = tokenizer.cls_token_id
     end_token_id = tokenizer.sep_token_id
 
@@ -71,14 +77,28 @@ def main(
             model_name, cache_dir="cache"
         )
         word_map_callable = get_word_map_callable(
-            is_roberta=True, text_tokenizer=tokenizer
+           model_type="roberta", text_tokenizer=tokenizer
         )
-    else:
+    elif "distilbert" in model_name:
+        model = DistilBertForSequenceClassification.from_pretrained(
+            model_name, cache_dir="cache"
+        )
+        word_map_callable = get_word_map_callable(
+            model_type="bert", text_tokenizer=tokenizer
+        )
+    elif "bert" in model_name:
         model = BertForSequenceClassification.from_pretrained(
             model_name, cache_dir="cache"
         )
         word_map_callable = get_word_map_callable(
-            is_roberta=False, text_tokenizer=tokenizer
+            model_type="bert", text_tokenizer=tokenizer
+        )
+    elif "gpt2" in model_name:
+        model = GPT2ForSequenceClassification.from_pretrained(
+            model_name, cache_dir="cache"
+        )
+        word_map_callable = get_word_map_callable(
+            model_type="gpt2", text_tokenizer=tokenizer
         )
 
     model.to(device)
@@ -108,6 +128,7 @@ def main(
     processing_time = []
     comp_aopcs = []
     suff_aopcs = []
+    word_lengths = []
 
     aopc_solver_callable = get_aopc_solver(
         model,
@@ -119,12 +140,9 @@ def main(
         beam_size=beam_size,
     )
 
-    i = 0
-    for example in track(
-        dataset, description="Approximating bounds...", total=len(dataset)
-    ):
-        input_ids = torch.tensor(example["input_ids"]).to(device).unsqueeze(0)
+    for example in track(dataset, description="Approximating bounds...", total=len(dataset)):
         target_label = torch.tensor(example["label"]).to(device)
+        input_ids = torch.tensor(example["input_ids"]).to(device).unsqueeze(0)
         if explanation_attributions is not None:
             attributions_for_example = attributions_df[
                 attributions_df["id"] == example["id"]
@@ -151,17 +169,23 @@ def main(
 
         word_map = word_map_callable(input_ids)
 
-        full_output = model(input_ids).logits.softmax(1).squeeze(0).cpu()[1].item()
+        has_bos = input_ids[0, 0].item() == start_token_id
+        has_eos = input_ids[0, -1].item() == end_token_id
+
+        tokens_start = 0 + has_bos
+        tokens_end = -1 if has_eos else len(input_ids[0])
+
+        full_output = model(input_ids).logits.softmax(1).squeeze(0).cpu()[target_label].item()
 
         word_map_dict = get_word_idx_to_token_idxs(word_map)
 
         permutation_input_ids = input_ids.clone()
         comp_aopc = 0
         comprehensiveness_attributions = torch.from_numpy(
-            comprehensiveness_attributions_out[1:-1]
+            comprehensiveness_attributions_out[tokens_start:tokens_end]
         )
         sorted_comprehensiveness_attributions = (
-            torch.argsort(comprehensiveness_attributions, descending=True) + 1
+            torch.argsort(comprehensiveness_attributions, descending=True) + has_bos
         )
 
         permutation_input_ids = input_ids.clone()
@@ -172,7 +196,7 @@ def main(
             batch_tensors.append(permutation_input_ids.clone())
 
         batch_tensors = torch.cat(batch_tensors, dim=0)
-        preds = model(batch_tensors).logits.softmax(1)[:, 1]
+        preds = model(batch_tensors).logits.softmax(1)[:, target_label]
         full_output_minus_preds = full_output - preds
 
         comp_aopc = full_output_minus_preds.sum().item() / len(
@@ -181,9 +205,9 @@ def main(
 
         permutation_input_ids = input_ids.clone()
         suff_aopc = 0
-        sufficiency_attributions = torch.from_numpy(sufficiency_attributions_out[1:-1])
+        sufficiency_attributions = torch.from_numpy(sufficiency_attributions_out[tokens_start:tokens_end])
         sorted_sufficiency_attributions = (
-            torch.argsort(sufficiency_attributions, descending=False) + 1
+            torch.argsort(sufficiency_attributions, descending=False) + has_bos
         )
 
         permutation_input_ids = input_ids.clone()
@@ -194,7 +218,7 @@ def main(
             batch_tensors.append(permutation_input_ids.clone())
 
         batch_tensors = torch.cat(batch_tensors, dim=0)
-        preds = model(batch_tensors).logits.softmax(1)[:, 1]
+        preds = model(batch_tensors).logits.softmax(1)[:, target_label]
         full_output_minus_preds = full_output - preds
 
         suff_aopc = full_output_minus_preds.sum().item() / len(
@@ -212,6 +236,8 @@ def main(
             upper_delta = math.nan
             lower_delta = math.nan
 
+        word_length = len(input_ids[0])
+
         id_list.append(example["id"])
         word_maps.append(word_map.numpy())
         upper_word_attribution_list.append(comprehensiveness_attributions.numpy())
@@ -223,6 +249,7 @@ def main(
         processing_time.append(total_time)
         comp_aopcs.append(comp_aopc)
         suff_aopcs.append(suff_aopc)
+        word_lengths.append(word_length)
 
     df = pd.DataFrame(
         {
@@ -237,6 +264,7 @@ def main(
             "processing_time": processing_time,
             "comprehensiveness": comp_aopcs,
             "sufficiency": suff_aopcs,
+            "word_length": word_lengths,
         }
     )
     preprocesing_string = (
@@ -244,6 +272,7 @@ def main(
         if preprocessing_step is None
         else preprocessing_step + "_" + explanation_attributions
     )
+    file_suffix = f"_{file_suffix}" if file_suffix != "" else ""
     df.to_parquet(
         f"results/aopc_limits_approx/{dataset_name}_{dataset_length}_{preprocesing_string}_beam_size_{str(beam_size)}_{model_name.split('/')[1]}.parquet"
     )
@@ -259,6 +288,7 @@ if __name__ == "__main__":
     parser.add_argument("--use_exact_limits", type=bool, default=True)
     parser.add_argument("--dataset_length", type=str, default="short")
     parser.add_argument("--beam_size", type=int, default=50)
+    parser.add_argument("--file_suffix", type=str, default="")
     args = parser.parse_args()
     if args.dataset_length == "long":
         warnings.warn("Long datasets are not supported for exact bound comparisons.")
@@ -270,4 +300,5 @@ if __name__ == "__main__":
         use_exact_limits=args.use_exact_limits,
         dataset_length=args.dataset_length,
         beam_size=args.beam_size,
+        file_suffix=args.file_suffix,
     )

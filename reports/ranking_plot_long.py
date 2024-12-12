@@ -269,4 +269,4 @@ for line in leg.get_lines():
 
 plt.tight_layout()
 plt.show()
-plt.savefig("figures/ranking_plot_long.pdf", bbox_inches="tight", format="pdf")
+plt.savefig("figures/ranking_plot_long_sentiment.pdf", bbox_inches="tight", format="pdf")

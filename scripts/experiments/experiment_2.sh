@@ -6,6 +6,8 @@ poetry run python src/evaluation/evaluate_feature_attributions.py
 bash scripts/experiments/approximate_bounds/long/sst2.sh
 bash scripts/experiments/approximate_bounds/long/imdb.sh
 bash scripts/experiments/approximate_bounds/long/yelp.sh
+bash scripts/experiments/approximate_bounds/snli/yelp.sh
+bash scripts/experiments/approximate_bounds/agnews/yelp.sh
 bash scripts/experiments/approximate_bounds/short/sst2.sh
 bash scripts/experiments/approximate_bounds/short/yelp.sh
 

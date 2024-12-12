@@ -59,8 +59,10 @@ def create_baseline_input(
         torch.Tensor: Baseline input
     """
     baseline = torch.ones_like(input_ids) * baseline_token_id
-    baseline[:, 0] = cls_token_id
-    baseline[:, -1] = eos_token_id
+    if cls_token_id is not None:
+        baseline[:, 0] = cls_token_id
+    if eos_token_id is not None:
+        baseline[:, -1] = eos_token_id
     return baseline
 
 
@@ -193,14 +195,29 @@ def get_attingrad_callable(
             attention_mask=attention_mask,
         )
         return output.logits
-
+    
+    def predict_no_token_ids(inputs, token_type_ids=None, position_ids=None, attention_mask=None):
+        output = model(
+            inputs,
+            attention_mask=attention_mask,
+        )
+        return output.logits
+    
     if hasattr(model, "roberta"):
         explainer = captum.attr.LayerGradientXActivation(
             predict, model.roberta.embeddings, multiply_by_inputs=True
         )
+    elif hasattr(model, "distilbert"):
+        explainer = captum.attr.LayerGradientXActivation(
+            predict_no_token_ids, model.distilbert.embeddings, multiply_by_inputs=True
+        )
     elif hasattr(model, "bert"):
         explainer = captum.attr.LayerGradientXActivation(
             predict, model.bert.embeddings, multiply_by_inputs=True
+        )
+    elif hasattr(model, "transformer"):
+        explainer = captum.attr.LayerGradientXActivation(
+            predict, model.transformer.wte, multiply_by_inputs=True
         )
 
     @torch.no_grad()
@@ -263,10 +280,20 @@ def get_deeplift_callable(
         explainer = captum.attr.LayerDeepLift(
             model, model.model.roberta.embeddings, multiply_by_inputs=True
         )
+    elif hasattr(model_in, "distilbert"):
+        model = ModelWrapper(model_in)
+        explainer = captum.attr.LayerDeepLift(
+            model, model.model.distilbert.embeddings, multiply_by_inputs=True
+        )
     elif hasattr(model_in, "bert"):
         model = ModelWrapper(model_in)
         explainer = captum.attr.LayerDeepLift(
             model, model.model.bert.embeddings, multiply_by_inputs=True
+        )
+    elif hasattr(model_in, "transformer"):
+        model = ModelWrapper(model_in)
+        explainer = captum.attr.LayerDeepLift(
+            model, model.model.transformer.wte, multiply_by_inputs=True
         )
 
     def deeplift_callable(
@@ -333,13 +360,28 @@ def get_gradient_x_input_callable(
         )
         return output.logits
 
+    def predict_no_token_ids(inputs, token_type_ids=None, position_ids=None, attention_mask=None):
+        output = model(
+            inputs,
+            attention_mask=attention_mask,
+        )
+        return output.logits
+
     if hasattr(model, "roberta"):
         explainer = captum.attr.LayerGradientXActivation(
             predict, model.roberta.embeddings, multiply_by_inputs=True
         )
+    elif hasattr(model, "distilbert"):
+        explainer = captum.attr.LayerGradientXActivation(
+            predict_no_token_ids, model.distilbert.embeddings, multiply_by_inputs=True
+        )
     elif hasattr(model, "bert"):
         explainer = captum.attr.LayerGradientXActivation(
             predict, model.bert.embeddings, multiply_by_inputs=True
+        )
+    elif hasattr(model, "transformer"):
+        explainer = captum.attr.LayerGradientXActivation(
+            predict, model.transformer.wte, multiply_by_inputs=True
         )
 
     def gradients_x_input_callable(
@@ -393,13 +435,28 @@ def get_integrated_gradient_callable(
         )
         return output.logits
 
+    def predict_no_token_ids(inputs, token_type_ids=None, position_ids=None, attention_mask=None):
+        output = model(
+            inputs,
+            attention_mask=attention_mask,
+        )
+        return output.logits
+
     if hasattr(model, "roberta"):
         explainer = captum.attr.LayerIntegratedGradients(
             predict, model.roberta.embeddings, multiply_by_inputs=True
         )
+    elif hasattr(model, "distilbert"):
+        explainer = captum.attr.LayerIntegratedGradients(
+            predict_no_token_ids, model.distilbert.embeddings, multiply_by_inputs=True
+        )
     elif hasattr(model, "bert"):
         explainer = captum.attr.LayerIntegratedGradients(
             predict, model.bert.embeddings, multiply_by_inputs=True
+        )
+    elif hasattr(model, "transformer"):
+        explainer = captum.attr.LayerIntegratedGradients(
+            predict, model.transformer.wte, multiply_by_inputs=True
         )
 
     def integrated_gradients_callable(
@@ -461,8 +518,18 @@ def get_kernelshap_callable(
             attention_mask=attention_mask,
         )
         return output.logits
+    
+    def predict_no_token_ids(inputs, token_type_ids=None, position_ids=None, attention_mask=None):
+        output = model(
+            inputs,
+            attention_mask=attention_mask,
+        )
+        return output.logits
 
-    explainer = captum.attr.KernelShap(predict)
+    if hasattr(model, "distilbert"):
+        explainer = captum.attr.KernelShap(predict_no_token_ids)
+    else:
+        explainer = captum.attr.KernelShap(predict)
 
     @torch.no_grad()
     def kernelshap_callable(
@@ -528,7 +595,17 @@ def get_lime_callable(
         )
         return output.logits
 
-    explainer = captum.attr.Lime(predict)
+    def predict_no_token_ids(inputs, token_type_ids=None, position_ids=None, attention_mask=None):
+        output = model(
+            inputs,
+            attention_mask=attention_mask,
+        )
+        return output.logits
+
+    if hasattr(model, "distilbert"):
+        explainer = captum.attr.Lime(predict_no_token_ids)
+    else:
+        explainer = captum.attr.Lime(predict)
 
     @torch.no_grad()
     def lime_callable(
