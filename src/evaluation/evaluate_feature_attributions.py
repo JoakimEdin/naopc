@@ -1,6 +1,7 @@
 import datasets
 import pandas as pd
 import torch
+from rich.progress import track
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from src.utils.tokenizer import get_word_idx_to_token_idxs
@@ -8,8 +9,7 @@ from src.utils.tokenizer import get_word_idx_to_token_idxs
 BATCH_SIZE = 1024
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-dataset_names = ["yelp", "sst2"]
-model_names = [
+sentiment_model_names = [
     "textattack/bert-base-uncased-SST-2",
     "textattack/roberta-base-SST-2",
     "textattack/bert-base-uncased-yelp-polarity",
@@ -17,22 +17,42 @@ model_names = [
     "textattack/bert-base-uncased-imdb",
     "textattack/roberta-base-imdb",
 ]
+snli_model_names = [
+    'textattack/bert-base-uncased-snli',
+    'textattack/distilbert-base-cased-snli',
+    'varun-v-rao/gpt2-snli-model1',
+]
+agnews_model_names = [
+    'textattack/distilbert-base-uncased-ag-news',
+    'textattack/bert-base-uncased-ag-news',
+    'textattack/roberta-base-ag-news',
+]
+
+datasets_2_models = {
+    "yelp": sentiment_model_names,
+    "sst2": sentiment_model_names,
+    "imdb": sentiment_model_names,
+    "snli": snli_model_names,
+    "ag_news": agnews_model_names,
+}
 
 
 tokenizers = {}
 
-for model_name in model_names:
+for model_name in sentiment_model_names + snli_model_names + agnews_model_names:
     tokenizers[model_name] = AutoTokenizer.from_pretrained(
         model_name, cache_dir="cache"
     )
 
-for dataset_name in dataset_names:
-    for length in ["short"]:
-        if (dataset_name == "imdb") and (length == "short"):
+for dataset_name in datasets_2_models.keys():
+    for length in ["short", "long"]:
+        if (dataset_name in {"imdb", "snli", "ag_news"}) and (length == "short"):
             continue
         dataset = datasets.load_dataset(
             "csv", data_files=f"data/{dataset_name}_test_{length}.csv", split="train"
         )
+        if dataset_name == "snli":
+            dataset = dataset.map(lambda x: {"text": x["premise"] + " " + x["hypothesis"]})
         dataset = dataset.map(
             lambda x: {
                 f"input_ids_{model_name}": tokenizer(x["text"])["input_ids"]
@@ -41,9 +61,10 @@ for dataset_name in dataset_names:
             batched=True,
         )
 
-        for model_name in model_names:
-            mask_token_id = tokenizers[model_name].mask_token_id
-            pad_token_id = tokenizers[model_name].pad_token_id
+        for model_name in datasets_2_models[dataset_name]:
+
+            mask_token_id = tokenizers[model_name].mask_token_id if not "gpt2" in model_name else tokenizers[model_name].eos_token_id
+            pad_token_id = tokenizers[model_name].pad_token_id if not "gpt2" in model_name else tokenizers[model_name].eos_token_id
             start_token_id = tokenizers[model_name].cls_token_id
             end_token_id = tokenizers[model_name].sep_token_id
 
@@ -65,7 +86,12 @@ for dataset_name in dataset_names:
 
             with torch.no_grad():
                 for explanation_method in explanation_methods:
-                    for example in dataset:
+                    for example in track(
+                        dataset,
+                        description=f"Evaluating {explanation_method}",
+                        total=len(dataset),
+                    ):                        
+                        target_label = example["label"]
                         input_ids = (
                             torch.tensor(example[input_id_column_name])
                             .to(device)
@@ -76,7 +102,7 @@ for dataset_name in dataset_names:
                             model(input_ids)
                             .logits.softmax(1)
                             .squeeze(0)
-                            .cpu()[1]
+                            .cpu()[target_label]
                             .item()
                         )
 
@@ -100,13 +126,19 @@ for dataset_name in dataset_names:
                             word_map = word_map - 1
                             word_map[0] = 0
 
+                        has_bos = input_ids[0, 0] == start_token_id
+                        has_eos = input_ids[0, -1] == end_token_id
+
+                        tokens_start = 0 + has_bos
+                        tokens_end = -1 if has_eos else len(input_ids[0])
+
                         word_map_dict = get_word_idx_to_token_idxs(word_map)
 
                         word_attributions = torch.from_numpy(word_attributions)[
-                            1:-1
+                            tokens_start:tokens_end
                         ]  # ignore cls and sep token
                         word_ranking = (
-                            torch.argsort(word_attributions, descending=True) + 1
+                            torch.argsort(word_attributions, descending=True) + has_bos
                         )
                         permutation_input_ids = input_ids.clone()
 
@@ -120,7 +152,7 @@ for dataset_name in dataset_names:
                                 - model(permutation_input_ids)
                                 .logits.softmax(1)
                                 .squeeze(0)
-                                .cpu()[1]
+                                .cpu()[target_label]
                                 .item()
                             )
 
@@ -137,7 +169,7 @@ for dataset_name in dataset_names:
                                 - model(permutation_input_ids)
                                 .logits.softmax(1)
                                 .squeeze(0)
-                                .cpu()[1]
+                                .cpu()[target_label]
                                 .item()
                             )
 

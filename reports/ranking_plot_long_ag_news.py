@@ -5,22 +5,17 @@ datasets = ["yelp", "sst2", "imdb"]
 length = "long"
 
 model_names = [
-    "textattack/bert-base-uncased-SST-2",
-    "textattack/roberta-base-SST-2",
-    "textattack/bert-base-uncased-yelp-polarity",
-    "VictorSanh/roberta-base-finetuned-yelp-polarity",
-    "textattack/bert-base-uncased-imdb",
-    "textattack/roberta-base-imdb",
+    'textattack/distilbert-base-uncased-ag-news',
+    'textattack/bert-base-uncased-ag-news',
+    'textattack/roberta-base-ag-news',
 ]
-
+datasets = ["ag_news"]
 model_dict = {
-    "textattack/roberta-base-SST-2": "RoBERTa$_{\\text{SST2}}$",
-    "textattack/bert-base-uncased-SST-2": "BERT$_{\\text{SST2}}$",
-    "textattack/bert-base-uncased-yelp-polarity": "BERT$_{\\text{Yelp}}$",
-    "VictorSanh/roberta-base-finetuned-yelp-polarity": "RoBERTa$_{\\text{Yelp}}$",
-    "textattack/bert-base-uncased-imdb": "BERT$_{\\text{IMDB}}$",
-    "textattack/roberta-base-imdb": "RoBERTa$_{\\text{IMDB}}$",
+    'distilbert-base-uncased-ag-news': 'DistillBERT$_{\\text{AG News}}$',
+    'bert-base-uncased-ag-news': 'BERT$_{\\text{AG News}}$',
+    'roberta-base-ag-news': 'RoBERTa$_{\\text{AG News}}$',
 }
+dataset_map = {"ag_news": "AG News"}
 
 explainer_dict = {
     "occlusion_1": "Occlusion@1",
@@ -38,7 +33,7 @@ explainers_to_include = ["DecompX", "LIME", "IG", "Attention"]
 dataframe_list = []
 # Plot settings
 plt.rcParams["ytick.major.pad"] = "2"
-fig, ax = plt.subplots(2, 3, figsize=(20, 18), sharex="all", sharey="all")
+fig, ax = plt.subplots(2, 1, figsize=(20, 18), sharex="all", sharey="all")
 
 for col_idx, dataset_name in enumerate(datasets):
     for model_name in model_names:
@@ -54,7 +49,7 @@ for col_idx, dataset_name in enumerate(datasets):
             suffixes=("", "_approx"),
         )
 
-        results_df["model"] = model_dict[model_name]
+        results_df["model"] = model_dict[model_name.split("/")[1]]
         dataframe_list.append(results_df)
     df = pd.concat(dataframe_list)
 
@@ -129,23 +124,21 @@ for col_idx, dataset_name in enumerate(datasets):
         positions = ["Original", "Approximation algorithm"]
 
         # Highlight specific countries (optional)
+
         models = [
-            "BERT$_{\\text{IMDB}}$",
-            "RoBERTa$_{\\text{IMDB}}$",
-            "BERT$_{\\text{Yelp}}$",
-            "RoBERTa$_{\\text{Yelp}}$",
-            "BERT$_{\\text{SST2}}$",
-            "RoBERTa$_{\\text{SST2}}$",
+            "DistillBERT$_{\\text{AG News}}$",
+            "BERT$_{\\text{AG News}}$",
+            "RoBERTa$_{\\text{AG News}}$",
         ]
         model_colors = [
             "#377eb8",
             "#ff7f00",
             "#4daf4a",
-            "#f781bf",
-            "#a65628",
+            # "#f781bf",
+            # "#a65628",
             # "#984ea3",
             # "#999999",
-            "#e41a1c",
+            # "#e41a1c",
             # "#dede00",
         ]
 
@@ -153,7 +146,7 @@ for col_idx, dataset_name in enumerate(datasets):
             model_data = results[results["model"] == model]
             for i in range(model_data.shape[0]):
                 if i == 0:
-                    ax[row_idx, col_idx].plot(
+                    ax[row_idx].plot(
                         positions,
                         model_data.iloc[i, 1:3],
                         marker="o",
@@ -163,7 +156,7 @@ for col_idx, dataset_name in enumerate(datasets):
                         label=model,
                     )
                 else:
-                    ax[row_idx, col_idx].plot(
+                    ax[row_idx].plot(
                         positions,
                         model_data.iloc[i, 1:3],
                         marker="o",
@@ -173,25 +166,25 @@ for col_idx, dataset_name in enumerate(datasets):
                     )
 
         # Customize the plot appearance
-        ax[row_idx, col_idx].set_xticks(positions)
+        ax[row_idx].set_xticks(positions)
 
-        # ax[row_idx, col_idx].grid(True, linestyle='--', alpha=0.6)
-        ax[row_idx, col_idx].spines["top"].set_visible(False)
-        ax[row_idx, col_idx].spines["right"].set_visible(False)
-        ax[row_idx, col_idx].spines["bottom"].set_visible(False)
-        ax[row_idx, col_idx].spines["left"].set_visible(False)
+        # ax[row_idx].grid(True, linestyle='--', alpha=0.6)
+        ax[row_idx].spines["top"].set_visible(False)
+        ax[row_idx].spines["right"].set_visible(False)
+        ax[row_idx].spines["bottom"].set_visible(False)
+        ax[row_idx].spines["left"].set_visible(False)
 
-        ax[row_idx, col_idx].set_yticks([1, 5, 10, 15, 20])
-        ax[row_idx, col_idx].set_yticklabels(
+        ax[row_idx].set_yticks([1, 5, 10, 15, 20])
+        ax[row_idx].set_yticklabels(
             ["1st", "5th", "10th", "15th", "20th"], fontsize=16, fontweight="semibold"
         )
-        ax[row_idx, col_idx].set_xticklabels(
+        ax[row_idx].set_xticklabels(
             ["AOPC", "NAOPC$_{\\text{beam}}$"],
             fontsize=18,
             fontweight="bold",
         )
 
-        # ax[row_idx, col_idx].tick_params(
+        # ax[row_idx].tick_params(
         #     top=False, labeltop=True, bottom=False, labelbottom=False, left=False
         # )
 
@@ -204,25 +197,25 @@ for col_idx, dataset_name in enumerate(datasets):
                 .replace("sst2", "SST-2$_{\\text{long}}$")
                 .replace("yelp", "Yelp$_{\\text{long}}$")
             )
-            ax[row_idx, col_idx].set_title(
+            ax[row_idx].set_title(
                 f"{dataset_name}",
                 fontsize=25,
                 fontweight="bold",
             )
-            # ax[row_idx, col_idx].tick_params(labelbottom=True)
+            # ax[row_idx].tick_params(labelbottom=True)
 
         # # Custom legend
         # legend_elements = [Patch(facecolor='grey', edgecolor='grey', label='Other countries')]
         # for combination, color in zip(highlight_combinations, highlight_colors):
         #     legend_elements.append(Patch(facecolor=color, edgecolor=color, label=combination))
 
-        # ax[row_idx, col_idx].legend(handles=legend_elements, loc='upper right', fontsize=12)
+        # ax[row_idx].legend(handles=legend_elements, loc='upper right', fontsize=12)
 
         # Annotate with name specific points (optional)
         for i in range(results.shape[0]):
             rank = results.iloc[i, 2] + 0.1
             pos = 1.08
-            ax[row_idx, col_idx].text(
+            ax[row_idx].text(
                 pos,
                 rank,
                 f"{results.iloc[i, 0]}",
@@ -236,7 +229,7 @@ for col_idx, dataset_name in enumerate(datasets):
                 rank = results.iloc[i, column + 1] - 0.2
                 pos = column
                 score = results.iloc[i, column + 3]
-                ax[row_idx, col_idx].text(
+                ax[row_idx].text(
                     pos,
                     rank,
                     f"{score:.2f}",
@@ -249,12 +242,12 @@ for col_idx, dataset_name in enumerate(datasets):
 
         # Display the plot
 
-ax[0, 0].set_ylabel("Comprehensiveness", fontsize=25, fontweight="bold", labelpad=10)
-ax[1, 0].set_ylabel("Sufficiency", fontsize=25, fontweight="bold", labelpad=10)
+ax[0].set_ylabel("Comprehensiveness", fontsize=25, fontweight="bold", labelpad=10)
+ax[1].set_ylabel("Sufficiency", fontsize=25, fontweight="bold", labelpad=10)
 plt.gca().invert_yaxis()
 
 # Custom legend
-handles, labels = ax[0, 0].get_legend_handles_labels()
+handles, labels = ax[0].get_legend_handles_labels()
 leg = fig.legend(
     handles,
     labels,
@@ -269,4 +262,4 @@ for line in leg.get_lines():
 
 plt.tight_layout()
 plt.show()
-plt.savefig("figures/ranking_plot_long_sentiment.pdf", bbox_inches="tight", format="pdf")
+plt.savefig("figures/ranking_plot_long_agnews.pdf", bbox_inches="tight", format="pdf")

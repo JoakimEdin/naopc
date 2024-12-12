@@ -8,6 +8,7 @@ from src.feature_attribution_methods.decompx.bert import BertForSequenceClassifi
 from src.feature_attribution_methods.decompx.roberta import (
     RobertaForSequenceClassification,
 )
+from transformers import DistilBertForSequenceClassification, GPT2ForSequenceClassification
 from src.feature_attribution_methods.feature_attribution_methods import (
     get_attention_callable,
     get_decompx_callable,
@@ -23,8 +24,7 @@ from src.utils.tokenizer import get_word_map_callable
 BATCH_SIZE = 1024
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-dataset_names = ["yelp", "sst2", "imdb"]
-model_names = [
+sentiment_model_names = [
     "textattack/bert-base-uncased-SST-2",
     "textattack/roberta-base-SST-2",
     "textattack/bert-base-uncased-yelp-polarity",
@@ -32,6 +32,24 @@ model_names = [
     "textattack/bert-base-uncased-imdb",
     "textattack/roberta-base-imdb",
 ]
+snli_model_names = [
+    'textattack/bert-base-uncased-snli',
+    'textattack/distilbert-base-cased-snli',
+    'varun-v-rao/gpt2-snli-model1',
+]
+agnews_model_names = [
+    'textattack/distilbert-base-uncased-ag-news',
+    'textattack/bert-base-uncased-ag-news',
+    'textattack/roberta-base-ag-news',
+]
+
+datasets_2_models = {
+    "yelp": sentiment_model_names,
+    "sst2": sentiment_model_names,
+    "imdb": sentiment_model_names,
+    "snli": snli_model_names,
+    "ag_news": agnews_model_names,
+}
 
 explanation_methods = {
     "decompx": get_decompx_callable,
@@ -46,17 +64,20 @@ explanation_methods = {
 
 tokenizers = {}
 
-for model_name in model_names:
+for model_name in sentiment_model_names + snli_model_names + agnews_model_names:
     tokenizers[model_name] = AutoTokenizer.from_pretrained(model_name)
 
-for dataset_name in dataset_names:
+for dataset_name in datasets_2_models.keys():
+    model_names = datasets_2_models[dataset_name]
     for length in ["short", "long"]:
-        if (dataset_name == "imdb") and (length == "short"):
+        if (dataset_name in {"imdb", "snli", "ag_news"}) and (length == "short"):
             continue  # imdb short doesn't exist
 
         dataset = datasets.load_dataset(
             "csv", data_files=f"data/{dataset_name}_test_{length}.csv", split="train"
         )
+        if dataset_name == "snli":
+            dataset = dataset.map(lambda x: {"text": x["premise"] + " " + x["hypothesis"]})
         dataset = dataset.map(
             lambda x: {
                 f"input_ids_{model_name}": tokenizer(x["text"])["input_ids"]
@@ -66,30 +87,44 @@ for dataset_name in dataset_names:
         )
 
         for model_name in model_names:
-            mask_token_id = tokenizers[model_name].mask_token_id
-            pad_token_id = tokenizers[model_name].pad_token_id
+            input_id_column_name = f"input_ids_{model_name}"
+
+            mask_token_id = tokenizers[model_name].mask_token_id if not "gpt2" in model_name else tokenizers[model_name].eos_token_id
+            pad_token_id = tokenizers[model_name].pad_token_id if not "gpt2" in model_name else tokenizers[model_name].eos_token_id
             start_token_id = tokenizers[model_name].cls_token_id
             end_token_id = tokenizers[model_name].sep_token_id
 
-            input_id_column_name = f"input_ids_{model_name}"
             if "roberta" in model_name:
                 model = RobertaForSequenceClassification.from_pretrained(
                     model_name, cache_dir="cache"
                 )
                 word_map_callable = get_word_map_callable(
-                    is_roberta=True, text_tokenizer=tokenizers[model_name]
+                model_type="roberta", text_tokenizer=tokenizers[model_name]
                 )
-            else:
+            elif "distilbert" in model_name:
+                model = DistilBertForSequenceClassification.from_pretrained(
+                    model_name, cache_dir="cache"
+                )
+                word_map_callable = get_word_map_callable(
+                    model_type="bert", text_tokenizer=tokenizers[model_name]
+                )
+            elif "bert" in model_name:
                 model = BertForSequenceClassification.from_pretrained(
                     model_name, cache_dir="cache"
                 )
                 word_map_callable = get_word_map_callable(
-                    is_roberta=False, text_tokenizer=tokenizers[model_name]
+                    model_type="bert", text_tokenizer=tokenizers[model_name]
+                )
+            elif "gpt2" in model_name:
+                model = GPT2ForSequenceClassification.from_pretrained(
+                    model_name, cache_dir="cache"
+                )
+                word_map_callable = get_word_map_callable(
+                    model_type="gpt2", text_tokenizer=tokenizers[model_name]
                 )
 
             model.to(device)
             model.eval()
-            target_label = torch.tensor([1]).to(device)
 
             token_attribution_list = []
             word_attribution_list = []
@@ -98,6 +133,11 @@ for dataset_name in dataset_names:
             word_maps = []
 
             for explanation_name, explanation_method in explanation_methods.items():
+                if explanation_name == "decompx":
+                    if "distilbert" in model_name:
+                        continue
+                    if "gpt2" in model_name:
+                        continue
                 explanation_method_callable = explanation_method(
                     model,
                     baseline_token_id=mask_token_id,
@@ -110,6 +150,7 @@ for dataset_name in dataset_names:
                     description=f"Calculating {explanation_name}",
                     total=len(dataset),
                 ):
+                    target_label = torch.tensor([example["label"]]).to(device)
                     input_ids = (
                         torch.tensor(example[input_id_column_name])
                         .to(device)

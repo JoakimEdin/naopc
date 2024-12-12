@@ -1,4 +1,3 @@
-import random
 from typing import Callable, Optional
 import torch
 
@@ -52,21 +51,6 @@ def get_pertubation_solver_callable(
             mask == 1,
             x, 
             torch.tensor(baseline_token_id)
-        )
-
-    def unmask_input(x, value_indices, word_map=None):
-        mask = torch.zeros_like(x)
-        if word_map is not None:
-            transformed_indices = [
-                word_map[i] for i in value_indices
-            ]
-            value_indices = [item for sublist in transformed_indices for item in sublist]
-        mask[:,value_indices] = 1
-        mask[:,[0,-1]] = 1
-        return torch.where(
-            mask == 1,
-            x,
-            torch.tensor(baseline_token_id),
         )
     
     @torch.no_grad()
@@ -166,7 +150,7 @@ def get_pertubation_solver_callable(
         full_input_score = prediction_function(input_ids, target_ids, device)
 
             
-        has_cls, has_eos = (input_ids[0, 0] == cls_token_id).item(), (input_ids[0, -1] == eos_token_id).item()
+        has_cls, has_eos = (input_ids[0, 0].item() == cls_token_id), (input_ids[0, -1].item() == eos_token_id)
         if word_map_callable is not None:
             word_map = get_word_idx_to_token_idxs(word_map_callable(input_ids))
             num_features = len(word_map) - has_cls - has_eos
