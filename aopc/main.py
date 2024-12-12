@@ -169,20 +169,13 @@ class Aopc:
             normalization: typing.Literal["exact", "approx"] | None = "approx",
     ) -> tuple[float, float]:
         try:
-            x = {**row, "beam_size": beam_size, "normalization": normalization}
-            #x = InputModel(**row, beam_size=beam_size, normalization=normalization)
+            x = InputModel(**row, beam_size=beam_size, normalization=normalization)
         except pydantic.ValidationError as e:
-            print(e)
             raise ValueError(
                 f"Error validating input. Expected input keys: {InputModel.model_fields} but got {list(row.keys())}"
             )
         return self._get_bounds(
-            input_ids=x["input_ids"],
-            text=x["text"],
-            target_label=x["target_label"],
-            word_map=x.get("word_map"),
-            normalization=x["normalization"],
-            beam_size=x["beam_size"],
+            x.model_dump()
         )
         
 
@@ -193,21 +186,13 @@ class Aopc:
         beam_size: int | None = None,
     ) -> dict[str, float]:
         try:
-            x = {**row, "beam_size": beam_size, "normalization": normalization}
-            #x = InputModel(**row)
+            x = InputModel(**row, beam_size=beam_size, normalization=normalization)
         except pydantic.ValidationError as e:
-            print(e)
             raise ValueError(
                 f"Error validating input. Expected input keys: {InputModel.model_fields}"
             )
         return self._calculate_aopc(
-            input_ids=x["input_ids"],
-            text=x["text"],
-            target_label=x["target_label"],
-            attributions=x["attributions"],
-            word_map=x.get("word_map"),
-            normalization=x["normalization"],
-            beam_size=x["beam_size"],
+            x.model_dump()
         ).model_dump()
     
     def get_suggested_beam_size(
