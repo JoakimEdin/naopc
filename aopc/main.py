@@ -22,13 +22,23 @@ NormalizationType: typing.TypeAlias = typing.Literal["exact", "approx"] | None
 
 
 class InputModel(pydantic.BaseModel):
-    model_config = pydantic.ConfigDict(frozen=True, arbitrary_types_allowed=True, from_attributes=True)
-    input_ids: torch.Tensor
+    model_config = pydantic.ConfigDict(frozen=True, arbitrary_types_allowed=True, from_attributes=False)
+    input_ids: torch.Tensor | list[int] | None = None
+    text: str | None = None
     target_label: int
     attributions: torch.Tensor | list[float]
     word_map: WordMap = None
     normalization: NormalizationType = "approx"
     beam_size: int | None = None
+
+    @pydantic.model_validator(mode="before")
+    def validate_model(cls, v):
+        text_present = "text" in v
+        input_ids_present = "input_ids" in v
+        if not text_present and not input_ids_present:
+            raise ValueError("Either `text` or `input_ids` must be provided.")
+
+    
 
 class AOPCResult(pydantic.BaseModel):
     lower_bound: float
@@ -59,17 +69,17 @@ class Aopc:
 
     def _get_bounds(
             self,
-            input_ids: torch.Tensor,
+            input_ids: torch.Tensor | None,
+            text: str | None,
             target_label: int,
-            attributions: torch.Tensor | list[float],
             word_map: torch.Tensor | list[int] | None = None,
             normalization: typing.Literal["exact", "approx"] | None = "approx",
             beam_size: int | None = None,
     ) -> tuple[float, float]:
+        input_ids = self._prepare_input(input_ids, text)
         lower, upper = get_bounds(
             input_ids=input_ids,
             target_label=target_label,
-            attributions=attributions,
             word_map=word_map,
             normalization=normalization,
             beam_size=beam_size,
@@ -80,16 +90,25 @@ class Aopc:
             mask_token_id=self.mask_token_id,
         )
         return {"lower_bound": lower, "upper_bound": upper}
+    
+    def _prepare_input(self, input_ids: torch.Tensor | None, text: str | None):
+        if input_ids is None:
+            input_ids = self.tokenizer(text, return_tensors="pt")["input_ids"]
+        if isinstance(input_ids, list[int]):
+            input_ids = torch.tensor(input_ids).unsqueeze(0)
+        return input_ids
 
     def _calculate_aopc(
         self,
-        input_ids: torch.Tensor,
+        input_ids: torch.Tensor | None,
+        text: str | None,
         target_label: int,
         attributions: torch.Tensor | list[float],
         word_map: torch.Tensor | list[int] | None = None,
         beam_size: int | None = None,
         normalization: typing.Literal["exact", "approx"] | None = "approx",
     ) -> tuple[float, float, float]:
+        input_ids = self._prepare_input(input_ids, text)
         if normalization:
             lower, upper = get_bounds(
                 input_ids=input_ids,
@@ -140,16 +159,17 @@ class Aopc:
             self,
             row: dict[str, typing.Any],
             beam_size: int | None = None,
+            normalization: typing.Literal["exact", "approx"] | None = "approx",
     ) -> tuple[float, float]:
         try:
-            x = InputModel(**row)
-        except pydantic.ValidationError:
+            x = InputModel(**row, beam_size=beam_size, normalization=normalization)
+        except pydantic.ValidationError as e:
+            print(e)
             raise ValueError(
-                f"Error validating input. Expected input keys: {InputModel.model_fields}"
+                f"Error validating input. Expected input keys: {InputModel.model_fields} but got {list(row.keys())}"
             )
         return self._get_bounds(
             **x.dict(),
-            beam_size=beam_size
         )
         
 
@@ -162,7 +182,8 @@ class Aopc:
     ) -> tuple[float, float, float]:
         try:
             x = InputModel(**row)
-        except pydantic.ValidationError:
+        except pydantic.ValidationError as e:
+            print(e)
             raise ValueError(
                 f"Error validating input. Expected input keys: {InputModel.model_fields}"
             )
@@ -184,7 +205,7 @@ class Aopc:
         prev_upper, prev_lower = 0.5, 0.5
         converge_counter = 0
         for beam_size in beam_sizes:
-            map_fn = partial(self.get_bounds_for_row, beam_size=beam_size)
+            map_fn = partial(self.get_bounds_for_row, beam_size=beam_size, normalization="approx")
             dset = dset.map(
                 map_fn, remove_columns=dset.column_names, desc=f"Estimating AOPC for beam size: {beam_size}", **kwargs
             )

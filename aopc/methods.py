@@ -37,7 +37,7 @@ class PerturbDataset(torch.utils.data.IterableDataset):
                         mask_indices_mapped = list(mask_indices)
                 except KeyError:
                     continue
-                temp = input_ids.clone().squeeze()
+                temp = self.input_ids.clone().squeeze()
                 if len(mask_indices) > 0:
                     temp[mask_indices_mapped] = self.mask_token_id
                 yield 0, str(sorted(mask_indices_mapped)), str(sorted(list(mask_indices))), temp
