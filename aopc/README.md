@@ -61,6 +61,23 @@ beam_size = aopc.get_suggested_beam_size(dset)
 new_dset = aopc.evaluate_dset(dset, normalization="approx", beam_size=beam_size)
 ```
 
-## License
+## License 
 
 This project is licensed under the MIT License.
+
+## Citation
+
+### Normalized AOPC: Fixing Misleading Faithfulness Metrics for Feature Attribution Explainability
+
+```
+@misc{edin2024normalizedaopcfixingmisleading,
+      title={Normalized AOPC: Fixing Misleading Faithfulness Metrics for Feature Attribution Explainability}, 
+      author={Joakim Edin and Andreas Geert Motzfeldt and Casper L. Christensen and Tuukka Ruotsalo and Lars Maaløe and Maria Maistro},
+      year={2024},
+      eprint={2408.08137},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2408.08137}, 
+}
+```
+
