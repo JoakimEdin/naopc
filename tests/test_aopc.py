@@ -6,31 +6,7 @@ from aopc import Aopc, AopcResult
 
 @pytest.fixture(scope="module")
 def aopc_instance():
-    return Aopc(model_id="distilbert-base-uncased")
-
-
-@pytest.fixture
-def sample_input_row():
-    return {
-        "input_ids": torch.tensor([101, 2009, 2003, 1037, 2204, 2154, 102]),
-        "target_label": 1,
-        "attributions": torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]),
-    }
-
-
-@pytest.fixture
-def sample_dataset():
-    data = {
-        "input_ids": [[101, 2009, 2003, 1037, 2204, 2154, 102]],
-        "target_label": [1],
-        "attributions": [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]],
-    }
-    return Dataset.from_dict(data)
-
-
-@pytest.fixture
-def sample_dataset_dict(sample_dataset):
-    return DatasetDict({"train": sample_dataset, "test": sample_dataset})
+    return Aopc(model_id="prajjwal1/bert-tiny")
 
 
 @pytest.mark.parametrize(
@@ -85,6 +61,16 @@ def sample_dataset_dict(sample_dataset):
             None,
             "approx",
             2,
+        ),
+        (
+            {
+                "text": "Hello, my dog is cute",
+                "target_label": 1,
+                "attributions": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
+            },
+            None,
+            "approx",
+            None,
         ),
     ],
 )

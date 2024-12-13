@@ -296,7 +296,7 @@ class Aopc:
     def evaluate(
         self,
         data: DatasetTypes,
-        normalization: NormalizationType,
+        normalization: NormalizationType = None,
         word_map: WordMap = None,
         beam_size: int | None = 5,
         map_kwargs: dict | None = None,
