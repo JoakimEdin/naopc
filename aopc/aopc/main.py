@@ -334,28 +334,3 @@ class Aopc:
             return AsDict(fn)(data)
 
         raise TypeError(f"Cannot evaluate input of type `{type(data)}`.")
-
-
-if __name__ == "__main__":
-    aopc = Aopc("textattack/bert-base-uncased-imdb")
-    dset: datasets.Dataset = datasets.load_dataset(
-        "csv", data_files="data/sst2_test_short.csv", split="train"
-    )  # type: ignore
-    tokenizer = AutoTokenizer.from_pretrained("textattack/bert-base-uncased-imdb")
-    dset = dset.map(
-        lambda x: {
-            "input_ids": tokenizer(x["text"])["input_ids"],
-            "target_label": x["label"],
-        }
-    )
-    # Make dummy attributions
-    dset = dset.map(
-        lambda x: {
-            "attributions": torch.rand(len(x["input_ids"])),
-        }
-    )
-    print(dset)
-    # beam_size = aopc.get_suggested_beam_size(dset)
-    result = aopc.evaluate_dset(dset, normalization="exact")
-    # result = aopc.evaluate_dset(dset, beam_size=5, normalization="approx")
-    print(result)

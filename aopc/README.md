@@ -41,7 +41,7 @@ dset = datasets.load_dataset("stanfordnlp/imdb")
 # Evaluate dataset without normalization
 new_dset = aopc.evaluate(dset)
 ```
-**Note**: `Aopc.evaluate()` allow either a dictionary, datasets.Dataset or datasets.DatasetDict as input.
+**Note**: `Aopc.evaluate()` allow either a `dict()`, `datasets.Dataset` or `datasets.DatasetDict` as input.
 
 ### Normalized AOPC with Exact Bounds
 Estimate 
