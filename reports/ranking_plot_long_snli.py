@@ -12,9 +12,14 @@ model_names = [
 datasets = ["snli"]
 model_dict = {
     'bert-base-uncased-snli': 'BERT$_{\\text{SNLI}}$',
-    'distilbert-base-cased-snli': 'RoBERTa$_{\\text{SNLI}}$',
+    'distilbert-base-cased-snli': 'DistilBERT$_{\\text{SNLI}}$',
     'gpt2-snli-model1': 'GPT-2$_{\\text{SNLI}}$',
 }
+models = [
+        'DistilBERT$_{\\text{SNLI}}$',
+        'BERT$_{\\text{SNLI}}$',
+        'GPT-2$_{\\text{SNLI}}$',
+    ]
 dataset_map = {"ag_news": "AG News"}
 
 explainer_dict = {
@@ -33,8 +38,6 @@ explainers_to_include = ["DecompX", "LIME", "IG", "Attention"]
 dataframe_list = []
 # Plot settings
 plt.rcParams["ytick.major.pad"] = "2"
-fig, ax = plt.subplots(2, 1, figsize=(20, 18), sharex="all", sharey="all")
-
 for col_idx, dataset_name in enumerate(datasets):
     for model_name in model_names:
         results_df = pd.read_csv(
@@ -76,6 +79,7 @@ for col_idx, dataset_name in enumerate(datasets):
     )
     df = df[df["explanation_method"].isin(explainers_to_include)]
     for row_idx, metric in enumerate(["comprehensiveness", "sufficiency"]):
+        fig, ax = plt.subplots(1, 1, figsize=(8, 5), sharex="all", sharey="all")
         if metric == "comprehensiveness":
             ascending = False
         else:
@@ -125,16 +129,11 @@ for col_idx, dataset_name in enumerate(datasets):
 
         # Highlight specific countries (optional)
 
-        models = [
-            'BERT$_{\\text{SNLI}}$',
-            'RoBERTa$_{\\text{SNLI}}$',
-            'GPT-2$_{\\text{SNLI}}$',
-        ]
         model_colors = [
             "#377eb8",
             "#ff7f00",
-            "#4daf4a",
-            # "#f781bf",
+            # "#4daf4a",
+            "#f781bf",
             # "#a65628",
             # "#984ea3",
             # "#999999",
@@ -146,7 +145,7 @@ for col_idx, dataset_name in enumerate(datasets):
             model_data = results[results["model"] == model]
             for i in range(model_data.shape[0]):
                 if i == 0:
-                    ax[row_idx].plot(
+                    ax.plot(
                         positions,
                         model_data.iloc[i, 1:3],
                         marker="o",
@@ -156,7 +155,7 @@ for col_idx, dataset_name in enumerate(datasets):
                         label=model,
                     )
                 else:
-                    ax[row_idx].plot(
+                    ax.plot(
                         positions,
                         model_data.iloc[i, 1:3],
                         marker="o",
@@ -166,56 +165,47 @@ for col_idx, dataset_name in enumerate(datasets):
                     )
 
         # Customize the plot appearance
-        ax[row_idx].set_xticks(positions)
+        ax.set_xticks(positions)
 
-        # ax[row_idx].grid(True, linestyle='--', alpha=0.6)
-        ax[row_idx].spines["top"].set_visible(False)
-        ax[row_idx].spines["right"].set_visible(False)
-        ax[row_idx].spines["bottom"].set_visible(False)
-        ax[row_idx].spines["left"].set_visible(False)
+        # ax.grid(True, linestyle='--', alpha=0.6)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["bottom"].set_visible(False)
+        ax.spines["left"].set_visible(False)
 
-        ax[row_idx].set_yticks([1, 5, 10, 15, 20])
-        ax[row_idx].set_yticklabels(
-            ["1st", "5th", "10th", "15th", "20th"], fontsize=16, fontweight="semibold"
+        ax.set_yticks([1, 5, 10])
+        ax.set_yticklabels(
+            ["1st", "5th", "10th"], fontsize=16, fontweight="semibold"
         )
-        ax[row_idx].set_xticklabels(
+        ax.set_xticklabels(
             ["AOPC", "NAOPC$_{\\text{beam}}$"],
             fontsize=18,
             fontweight="bold",
         )
 
-        # ax[row_idx].tick_params(
-        #     top=False, labeltop=True, bottom=False, labelbottom=False, left=False
-        # )
-
-        # do not show xtix for bottom row
-
         # Set the title
-        if row_idx == 0:
-            dataset_name = (
-                dataset_name.replace("imdb", "IMDB$_{\\text{long}}$")
-                .replace("sst2", "SST-2$_{\\text{long}}$")
-                .replace("yelp", "Yelp$_{\\text{long}}$")
-            )
-            ax[row_idx].set_title(
-                f"{dataset_name}",
-                fontsize=25,
-                fontweight="bold",
-            )
-            # ax[row_idx].tick_params(labelbottom=True)
+
+        dataset_name = "SNLI$_{\\text{long}}$"
+        
+        ax.set_title(
+            f"{dataset_name}",
+            fontsize=25,
+            fontweight="bold",
+        )
+            # ax.tick_params(labelbottom=True)
 
         # # Custom legend
         # legend_elements = [Patch(facecolor='grey', edgecolor='grey', label='Other countries')]
         # for combination, color in zip(highlight_combinations, highlight_colors):
         #     legend_elements.append(Patch(facecolor=color, edgecolor=color, label=combination))
 
-        # ax[row_idx].legend(handles=legend_elements, loc='upper right', fontsize=12)
+        # ax.legend(handles=legend_elements, loc='upper right', fontsize=12)
 
         # Annotate with name specific points (optional)
         for i in range(results.shape[0]):
             rank = results.iloc[i, 2] + 0.1
             pos = 1.08
-            ax[row_idx].text(
+            ax.text(
                 pos,
                 rank,
                 f"{results.iloc[i, 0]}",
@@ -229,7 +219,7 @@ for col_idx, dataset_name in enumerate(datasets):
                 rank = results.iloc[i, column + 1] - 0.2
                 pos = column
                 score = results.iloc[i, column + 3]
-                ax[row_idx].text(
+                ax.text(
                     pos,
                     rank,
                     f"{score:.2f}",
@@ -242,24 +232,24 @@ for col_idx, dataset_name in enumerate(datasets):
 
         # Display the plot
 
-ax[0].set_ylabel("Comprehensiveness", fontsize=25, fontweight="bold", labelpad=10)
-ax[1].set_ylabel("Sufficiency", fontsize=25, fontweight="bold", labelpad=10)
-plt.gca().invert_yaxis()
+        ax.set_ylabel(metric.title(), fontsize=25, fontweight="bold", labelpad=10)
+        # ax.set_ylabel("Sufficiency", fontsize=25, fontweight="bold", labelpad=10)
+        plt.gca().invert_yaxis()
 
-# Custom legend
-handles, labels = ax[0].get_legend_handles_labels()
-leg = fig.legend(
-    handles,
-    labels,
-    loc="lower center",
-    bbox_to_anchor=(0.5, -0.04),
-    ncol=6,
-    fontsize=22,
-    frameon=False,
-)
-for line in leg.get_lines():
-    line.set_linewidth(20.0)
+        # Custom legend
+        handles, labels = ax.get_legend_handles_labels()
+        leg = fig.legend(
+            handles,
+            labels,
+            loc="lower center",
+            bbox_to_anchor=(0.5, -0.09),
+            ncol=3,
+            fontsize=18,
+            frameon=False,
+        )
+        for line in leg.get_lines():
+            line.set_linewidth(20.0)
 
-plt.tight_layout()
-plt.show()
-plt.savefig("figures/ranking_plot_long_snli.pdf", bbox_inches="tight", format="pdf")
+        plt.tight_layout()
+        plt.savefig(f"figures/ranking_plot_long_snli_{metric}.pdf", bbox_inches="tight", format="pdf")
+        plt.clf()

@@ -45,13 +45,13 @@ for column_idx, dataset in enumerate(datasets):
         df = pd.melt(df, id_vars=["beam_size"], value_vars=["comprehensiveness", "sufficiency"], var_name="metric", value_name="aopc")
 
         # big plot
-        sns.violinplot(ax=ax_big[row_idx, column_idx], data=df, y="aopc", x="beam_size", hue="metric")
+        sns.boxplot(ax=ax_big[row_idx, column_idx], data=df, y="aopc", x="beam_size", hue="metric", palette="colorblind", showfliers=False)
         # no legend nor labels
         ax_big[row_idx, column_idx].get_legend().remove()
         ax_big[row_idx, column_idx].set_xlabel("")
         ax_big[row_idx, column_idx].set_ylabel("")
 
-        ax_big[row_idx, column_idx].set_ylim(-1.3, 1.3)
+        ax_big[row_idx, column_idx].set_ylim(-0.1, 1.0)
         ax_big[row_idx, column_idx].tick_params(axis="both", which="both", labelsize=12)
 
         if row_idx == 0:
@@ -66,9 +66,9 @@ for column_idx, dataset in enumerate(datasets):
         if column_idx == 0:
             model_name = model_map[model.split("/")[1]]
             if "roberta" in model_name.lower():
-                y_pos = -0.5
+                y_pos = 0.2
             else:
-                y_pos = -0.3
+                y_pos = 0.3
 
             ax_big[row_idx, column_idx].text(
                 -1.7,
@@ -85,16 +85,16 @@ for column_idx, dataset in enumerate(datasets):
             # .annotate(model_name, (-0.65, 0.5), xycoords = 'axes fraction', rotation = 90, va = 'center', fontweight = 'bold', fontsize = 18)
 
         # individual boxplot
-        fig, ax = plt.subplots(figsize=(3, 3))
+        fig, ax = plt.subplots(figsize=(4, 4))
 
-        sns.violinplot(ax=ax, data=df, y="aopc", x="beam_size", hue="metric")
+        sns.boxplot(ax=ax, data=df, y="aopc", x="beam_size", hue="metric", palette="colorblind", showfliers=False)
 
         handles, labels = ax.get_legend_handles_labels()
-        ax.legend(handles, ["Upper AOPC limit", "Lower AOPC limit"], loc="lower center", fontsize=12)
+        ax.legend(handles, ["Upper AOPC limit", "Lower AOPC limit"], bbox_to_anchor=(0.2, 0.25), fontsize=12, frameon=False,)
 
         plt.ylabel("AOPC")
         plt.xlabel("Beam Size")
-        plt.ylim(-1.25, 1.25)
+        plt.ylim(-0.1, 1.0)
         fig.tight_layout()
         fig.savefig(
             f"figures/boxplots/{dataset}_{model.split('/')[-1]}_increasing_beam_sizes.pdf",
@@ -104,7 +104,7 @@ for column_idx, dataset in enumerate(datasets):
 leg = fig_big.legend(
     handles=ax_big[0, 0].get_legend_handles_labels()[0],
     labels=["Upper AOPC limit", "Lower AOPC limit"],
-    bbox_to_anchor=(0.8, 0.412),
+    bbox_to_anchor=(0.8, 0.59),
     ncol=2,
     fontsize=18,
     frameon=False,
