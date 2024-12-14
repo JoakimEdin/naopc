@@ -38,6 +38,15 @@ import datasets
 # Load dataset
 dset = datasets.load_dataset("stanfordnlp/imdb")
 
+# Load a tokenizer and generate some random attributions
+tokenizer = AutoTokenizer.from_pretrained("prajjwal1/bert-tiny")
+dset = dset.map(
+    lambda x: {"input_ids": aopc.tokenizer(x["text"], truncation=True)["input_ids"]}
+)
+dset = dset.map(
+    lambda x: {"attributions": torch.rand(len(x["input_ids"]))}
+)
+
 # Evaluate dataset without normalization
 new_dset = aopc.evaluate(dset)
 ```
@@ -59,6 +68,24 @@ beam_size = aopc.get_suggested_beam_size(dset)
 
 # Approximate normalization
 new_dset = aopc.evaluate_dset(dset, normalization="approx", beam_size=beam_size)
+```
+
+### Word map usage
+
+For some use-cases we might be interested in measuring faithfulness on attributions that are on a word level (or some other combination of tokens) while the tokenization is on the subword level. For this we support having a word map per row. A word map is a mapping from word index to list of token indices. An example:
+
+```Python
+
+tokenizer = AutoTokenizer.from_pretrained("textattack/roberta-base-ag-news")
+text = "Truly horrendous"
+input_ids = tokenizer(text)["input_ids"]
+> [0, 565, 26582, 29577, 2]
+
+# A word map would map "Truly" to the tokens 565 (T) and 26582 (ruly), and "horrendous" to 29577.  
+word_map = {0: [0], 1: [1, 2], 2: [3], 3: [4]}
+
+aopc = Aopc("textattack/roberta-base-ag-news")
+aopc.evaluate_row(input_ids=input_ids, target_label=1, word_map=word_map, attributions=torch.rand(len(input_ids)))
 ```
 
 ## License 
